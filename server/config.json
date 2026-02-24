@@ -1,0 +1,12 @@
+{
+  "database": {
+    "host": "192.168.1.52",
+    "user": "adtr",
+    "password": "adtr",
+    "database": "new_dtr",
+    "port": 3306
+  },
+  "export": {
+    "path": "C:\\Users\\admin\\Documents\\DTR EXPORTS PATH TEST"
+  }
+}

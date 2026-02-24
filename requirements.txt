@@ -1,0 +1,63 @@
+# ========== NODE.JS BACKEND DEPENDENCIES ==========
+# Core dependencies
+express@^4.18.2
+mysql2@^3.10.0
+cors@^2.8.5
+multer@^1.4.5-lts.1
+xlsx@^0.18.5
+dotenv@^16.3.1
+bcrypt@^5.1.1
+
+# Development/utility dependencies
+nodemon@^3.0.1
+
+# ========== PYTHON SCRIPT DEPENDENCIES ==========
+# Database
+mysql-connector-python==8.2.0
+
+# Biometric device communication
+pyzk==0.9.1
+
+# Excel handling
+openpyxl==3.1.2
+XlsxWriter==3.1.9
+
+# PDF generation and manipulation
+reportlab==4.0.4
+PyPDF2==3.0.1
+
+# Windows printing (if on Windows)
+pywin32==306
+# Note: pywin32 is Windows-only. For Linux/Mac, consider:
+# cups-python (for Linux CUPS printing)
+# pycups (alternative for Linux)
+
+# Configuration
+pyyaml==6.0.1
+
+# Cryptography (if needed)
+cryptography==41.0.7
+
+# ========== VERSION NOTES ==========
+# Node.js: Version 16+ recommended
+# Python: Version 3.8+ recommended
+
+# ========== INSTALLATION COMMANDS ==========
+# For Node.js:
+# npm install
+
+# For Python:
+# pip install -r requirements.txt
+# OR for Python 3 specifically:
+# pip3 install -r requirements.txt
+
+# ========== OPTIONAL/PLATFORM-SPECIFIC ==========
+# For Windows printing support (already included above):
+# pip install pywin32
+
+# For Linux printing support:
+# pip install python-cups
+# OR: pip install pycups
+
+# For Mac printing support:
+# pip install pyobjc-framework-Cocoa
