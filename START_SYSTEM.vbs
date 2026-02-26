@@ -1,7 +1,10 @@
 Set WshShell = CreateObject("WScript.Shell")
-strPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptPosition)
+Set FSO = CreateObject("Scripting.FileSystemObject")
 
-' Optional: Show a quick notification
+' Get current script directory
+strPath = FSO.GetParentFolderName(WScript.ScriptFullName)
+
+' Optional: Show notification
 WshShell.Popup "MuniWeb is starting in the background...", 3, "System Startup", 64
 
 ' Start Frontend (Hidden)
@@ -13,3 +16,4 @@ WshShell.CurrentDirectory = strPath & "\server"
 WshShell.Run "cmd /c npm start", 0, False
 
 Set WshShell = Nothing
+Set FSO = Nothing
