@@ -87,13 +87,24 @@ pip install -r requirements.txt
 
 You can run everything using the provided batch file or manually.
 
-### Option 1: Using the Batch File (Recommended)
-1.  Double-click `run.bat` in the root folder.
-2.  This will open two windows: one for the **Frontend** and one for the **Backend Server**.
+### Option 1: The Standard Way (Minimized)
+1.  Double-click **`run.bat`** in the root folder.
+2.  This will start both the frontend and backend in **minimized** windows on your taskbar. This keeps your screen clean!
 
-### Option 2: Manual Start
+### Option 2: The Silent Way (Hidden)
+1.  Double-click **`start_silent.vbs`**.
+2.  The system will start completely in the background. No CMD windows will appear at all.
+
+### Option 3: Manual Start
 1.  **Start Backend**: Open a terminal in the `server` folder and run `npm start`.
 2.  **Start Frontend**: Open another terminal in the root folder and run `npm run dev`.
+
+---
+
+### 🛑 How to Stop the App
+If you need to close the system or restart it:
+1.  Double-click **`stop_app.bat`**.
+2.  This will safely close all running Node.js processes.
 
 ---
 
