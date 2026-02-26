@@ -85,26 +85,24 @@ pip install -r requirements.txt
 
 ## 🏃 How to Run the App
 
-You can run everything using the provided batch file or manually.
+For a clean experience on a different PC, you have two main options:
 
-### Option 1: The Standard Way (Minimized)
-1.  Double-click **`run.bat`** in the root folder.
-2.  This will start both the frontend and backend in **minimized** windows on your taskbar. This keeps your screen clean!
+### 🏆 Fixed Method: Completely Hidden (Recommended)
+1.  Double-click **`START_SYSTEM.vbs`**.
+2.  A small message will appear for 3 seconds saying the system is starting, then it will **disappear**.
+3.  The system is now running in the background with **zero windows** on your taskbar.
+4.  Open your browser to `http://localhost:5173` to use the app.
 
-### Option 2: The Silent Way (Hidden)
-1.  Double-click **`start_silent.vbs`**.
-2.  The system will start completely in the background. No CMD windows will appear at all.
-
-### Option 3: Manual Start
-1.  **Start Backend**: Open a terminal in the `server` folder and run `npm start`.
-2.  **Start Frontend**: Open another terminal in the root folder and run `npm run dev`.
+### Option 2: Visible/Debug Mode
+1.  Double-click **`run.bat`**.
+2.  This will show the CMD windows. Use this only if you need to see if there are errors (like database connection issues).
 
 ---
 
 ### 🛑 How to Stop the App
-If you need to close the system or restart it:
+Since the system runs in the background, you cannot close it by "X-ing" a window.
 1.  Double-click **`stop_app.bat`**.
-2.  This will safely close all running Node.js processes.
+2.  This will immediately stop all background processes for the system.
 
 ---
 
