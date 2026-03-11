@@ -1838,47 +1838,6 @@ app.post('/import-dtr', async (req, res) => {
   }
 });
 
-// Helper function to call Python biometric script (unchanged)
-async function fetchBiometricAttendance(biometricId, startDate, endDate) {
-  return new Promise((resolve, reject) => {
-    console.log(`Calling Python script for biometric ${biometricId}`);
-    
-    const pythonProcess = spawn('python', [
-      'fetch_biometric.py',
-      biometricId.toString(),
-      startDate || '',
-      endDate || ''
-    ]);
-
-    let dataString = '';
-    let errorString = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      dataString += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      errorString += data.toString();
-      console.error('Python stderr:', data.toString());
-    });
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`Python script failed: ${errorString}`));
-        return;
-      }
-      
-      try {
-        const attendances = JSON.parse(dataString);
-        console.log(`Python returned ${attendances.length} attendance records`);
-        resolve(attendances);
-      } catch (error) {
-        reject(new Error(`Failed to parse Python output: ${dataString}`));
-      }
-    });
-  });
-}
-
 // Helper function for file processing
 async function processDTRRecord(employee_id, datetime, start, end, dtrs) {
   const recordDate = datetime.toISOString().split('T')[0];
