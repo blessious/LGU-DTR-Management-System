@@ -16,4 +16,3 @@ WshShell.CurrentDirectory = strPath & "\server"
 WshShell.Run "cmd /c npm start", 0, False
 
 Set WshShell = Nothing
-Set FSO = Nothing
