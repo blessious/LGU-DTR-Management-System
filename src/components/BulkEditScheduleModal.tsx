@@ -12,9 +12,10 @@ import { api } from "@/lib/api";
 interface BulkEditScheduleModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export default function BulkEditScheduleModal({ isOpen, onClose }: BulkEditScheduleModalProps) {
+export default function BulkEditScheduleModal({ isOpen, onClose, onSuccess }: BulkEditScheduleModalProps) {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
@@ -152,6 +153,7 @@ export default function BulkEditScheduleModal({ isOpen, onClose }: BulkEditSched
       }
       
       toast.success(`Successfully updated schedule for ${selectedEmployeeIds.length} employees`);
+      if (onSuccess) onSuccess();
       onClose();
     } catch (error: any) {
       toast.error(error.message || "Failed to update bulk schedule");

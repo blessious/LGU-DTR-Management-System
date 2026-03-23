@@ -457,6 +457,7 @@ export default function Employees() {
       <BulkEditScheduleModal
         isOpen={isBulkEditModalOpen}
         onClose={() => setIsBulkEditModalOpen(false)}
+        onSuccess={fetchEmployees}
       />
 
 <Dialog open={isAddEmployeeModalOpen} onOpenChange={setIsAddEmployeeModalOpen}>

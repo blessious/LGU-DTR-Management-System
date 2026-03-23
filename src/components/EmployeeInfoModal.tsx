@@ -174,10 +174,14 @@ export default function EmployeeInfoModal({
   };
 
   const getTodayOverride = () => {
-    const today = new Date().toISOString().split('T')[0];
+    // Get local date parts to avoid UTC shifting issues (some zones drift to yesterday/tomorrow)
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    
     return overrides.find(o => {
-        const oDate = new Date(o.date).toISOString().split('T')[0];
-        return oDate === today;
+        const d = new Date(o.date);
+        const oDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return oDateStr === today;
     });
   };
 
@@ -435,8 +439,7 @@ export default function EmployeeInfoModal({
                         </h4>
                         <Button 
                           variant="outline" 
-                          size="sm" 
-                          className="h-7 text-[10px] font-bold border-primary/20 text-primary hover:bg-primary/5 px-2"
+                          className="h-9 text-xs font-black border-primary text-primary hover:bg-primary/5 px-4 shadow-sm active:scale-95 transition-transform"
                           onClick={() => {
                             // Logic to open bulk edit with this employee selected
                             onClose();
@@ -516,16 +519,16 @@ export default function EmployeeInfoModal({
               </div>
             </Tabs>
 
-            <div className="border-t border-border pt-4 px-1 flex gap-3 justify-between mt-auto">
+            <div className="border-t border-border pt-4 px-1 flex gap-2 justify-between mt-auto">
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setIsDTRModalOpen(true)} className="font-bold text-xs"><Calendar className="h-3.5 w-3.5 mr-2" /> View DTR</Button>
+                <Button variant="outline" onClick={() => setIsDTRModalOpen(true)} className="flex-1 whitespace-nowrap"><Calendar className="h-4 w-4 mr-2" /> View DTR</Button>
                 {canDeletePrivilege() && (
-                  <Button variant="ghost" size="sm" onClick={handleDelete} className="text-red-500 hover:bg-red-50 hover:text-red-600 font-bold text-xs"><Trash2 className="h-3.5 w-3.5 mr-2" /> Delete</Button>
+                  <Button variant="ghost" onClick={handleDelete} className="text-red-500 hover:bg-red-50 hover:text-red-600 flex-1">Delete</Button>
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleCancel} className="font-bold text-xs">Cancel</Button>
-                <Button onClick={handleSave} size="sm" className="btn-success font-bold text-xs shadow-md"><Save className="h-3.5 w-3.5 mr-2" /> Save</Button>
+                <Button variant="outline" onClick={handleCancel} className="flex-1">Cancel</Button>
+                <Button onClick={handleSave} className="flex-1 btn-success">Save</Button>
               </div>
             </div>
           </DialogContent>
