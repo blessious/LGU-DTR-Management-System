@@ -603,6 +603,214 @@ app.delete('/api/employees/:id', async (req, res) => {
   }
 });
 
+// Bulk Edit Schedule (Update multiple employees default schedule)
+app.post('/api/employees/bulk-schedule', async (req, res) => {
+  try {
+    const { employeeIds, schedule } = req.body;
+    
+    if (!employeeIds || !employeeIds.length) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const { am_in, am_out, pm_in, pm_out } = schedule;
+    
+    // Convert array of IDs to comma-separated string for IN clause, securely parameterized
+    if (employeeIds.length > 0) {
+      const placeholders = employeeIds.map(() => '?').join(',');
+      const updateQuery = `
+        UPDATE employees 
+        SET am_in = ?, am_out = ?, pm_in = ?, pm_out = ?
+        WHERE id IN (${placeholders})
+      `;
+      
+      const queryParams = [
+        am_in || null, 
+        am_out || null, 
+        pm_in || null, 
+        pm_out || null, 
+        ...employeeIds
+      ];
+      
+      await pool.query(updateQuery, queryParams);
+    }
+    
+    res.json({ message: 'Default schedule applied successfully' });
+  } catch (error) {
+    console.error('Error in POST /api/employees/bulk-schedule:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Bulk Edit Schedule Override (creates schedule exceptions for specific dates)
+app.post('/api/employees/bulk-schedule-overrides', async (req, res) => {
+  try {
+    const { employeeIds, startDate, endDate, schedule, skipWeekends } = req.body;
+    
+    if (!employeeIds || !employeeIds.length || !startDate || !endDate) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const dates = [];
+    
+    for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
+      const day = dt.getDay();
+      if (skipWeekends && (day === 0 || day === 6)) {
+        continue;
+      }
+      dates.push(new Date(dt).toISOString().split('T')[0]);
+    }
+    
+    if (dates.length === 0) {
+      return res.status(400).json({ error: 'No dates selected or all dates skipped' });
+    }
+    
+    const { am_in, am_out, pm_in, pm_out } = schedule;
+    
+    for (const empId of employeeIds) {
+      for (const date of dates) {
+        const checkQuery = 'SELECT id FROM employee_schedules WHERE employee_id = ? AND date = ?';
+        const [existing] = await pool.query(checkQuery, [empId, date]);
+        
+        if (existing.length > 0) {
+          const updateQuery = `
+            UPDATE employee_schedules 
+            SET am_in = ?, am_out = ?, pm_in = ?, pm_out = ?
+            WHERE employee_id = ? AND date = ?
+          `;
+          await pool.query(updateQuery, [
+            am_in || null, am_out || null, pm_in || null, pm_out || null, empId, date
+          ]);
+        } else {
+          const insertQuery = `
+            INSERT INTO employee_schedules (employee_id, date, am_in, am_out, pm_in, pm_out)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `;
+          await pool.query(insertQuery, [
+            empId, date, am_in || null, am_out || null, pm_in || null, pm_out || null
+          ]);
+        }
+      }
+    }
+    
+    res.json({ message: 'Schedule override applied successfully' });
+  } catch (error) {
+    console.error('Error in POST /api/employees/bulk-schedule-overrides:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get Schedule Overrides for a specific employee
+app.get('/api/employees/:id/overrides', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const query = `
+      SELECT id, date, 
+             TIME_FORMAT(am_in, '%H:%i') as am_in, 
+             TIME_FORMAT(am_out, '%H:%i') as am_out, 
+             TIME_FORMAT(pm_in, '%H:%i') as pm_in, 
+             TIME_FORMAT(pm_out, '%H:%i') as pm_out
+      FROM employee_schedules 
+      WHERE employee_id = ? 
+      ORDER BY date DESC
+    `;
+    const [overrides] = await pool.query(query, [id]);
+    res.json(overrides);
+  } catch (error) {
+    console.error('Error in GET /api/employees/:id/overrides:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete a specific schedule override
+app.delete('/api/employees/overrides/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM employee_schedules WHERE id = ?', [id]);
+    res.json({ message: 'Schedule override deleted successfully' });
+  } catch (error) {
+    console.error('Error in DELETE /api/employees/overrides/:id:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get Grouped Schedule ranges for an employee
+app.get('/api/employees/:id/overrides-grouped', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // 1. Get default schedule from employee
+    const [empRows] = await pool.query('SELECT am_in, am_out, pm_in, pm_out FROM employees WHERE id = ?', [id]);
+    if (empRows.length === 0) return res.status(404).json({ error: 'Employee not found' });
+    
+    const def = empRows[0];
+    const defSchedStr = `${def.am_in}-${def.am_out}-${def.pm_in}-${def.pm_out}`;
+
+    // 2. Get all overrides ordered by date
+    const [overrides] = await pool.query(`
+      SELECT date, 
+             TIME_FORMAT(am_in, '%H:%i:%s') as am_in, 
+             TIME_FORMAT(am_out, '%H:%i:%s') as am_out, 
+             TIME_FORMAT(pm_in, '%H:%i:%s') as pm_in, 
+             TIME_FORMAT(pm_out, '%H:%i:%s') as pm_out
+      FROM employee_schedules 
+      WHERE employee_id = ? 
+      ORDER BY date ASC
+    `, [id]);
+
+    const groups = [];
+    if (overrides.length > 0) {
+      let currentGroup = {
+        startDate: overrides[0].date,
+        endDate: overrides[0].date,
+        am_in: overrides[0].am_in,
+        am_out: overrides[0].am_out,
+        pm_in: overrides[0].pm_in,
+        pm_out: overrides[0].pm_out,
+        isDefault: false
+      };
+
+      const isSameSchedule = (s1, s2) => 
+        s1.am_in === s2.am_in && s1.am_out === s2.am_out && 
+        s1.pm_in === s2.pm_in && s1.pm_out === s2.pm_out;
+
+      const isNextDay = (d1, d2) => {
+        const date1 = new Date(d1);
+        const date2 = new Date(d2);
+        const diffInput = Math.abs(date2 - date1);
+        const diffDays = Math.ceil(diffInput / (1000 * 60 * 60 * 24));
+        return diffDays <= 1;
+      };
+
+      for (let i = 1; i < overrides.length; i++) {
+        const ov = overrides[i];
+        if (isSameSchedule(currentGroup, ov) && isNextDay(currentGroup.endDate, ov.date)) {
+          currentGroup.endDate = ov.date;
+        } else {
+          groups.push(currentGroup);
+          currentGroup = {
+            startDate: ov.date,
+            endDate: ov.date,
+            am_in: ov.am_in,
+            am_out: ov.am_out,
+            pm_in: ov.pm_in,
+            pm_out: ov.pm_out,
+            isDefault: false
+          };
+        }
+      }
+      groups.push(currentGroup);
+    }
+
+    res.json(groups);
+  } catch (error) {
+    console.error('Error in GET /api/employees/:id/overrides-grouped:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 // ========== FIXED NOTERS ENDPOINT ==========
 // Get department heads (noters) from ALL THREE TABLES
 app.get('/api/noters', async (req, res) => {
@@ -804,7 +1012,31 @@ app.get('/api/dtr/:employeeId', async (req, res) => {
       }
 
       const employeeSchedule = employeeRows[0];
-      const shiftType = detectShiftTypeFromSchedule(employeeSchedule);
+      const defaultShiftType = detectShiftTypeFromSchedule(employeeSchedule);
+
+      // Get Schedule Overrides for the selected date range
+      const [overrideRows] = await connection.query(`
+        SELECT 
+          date, 
+          TIME_FORMAT(am_in, '%H:%i:%s') as am_in, 
+          TIME_FORMAT(am_out, '%H:%i:%s') as am_out, 
+          TIME_FORMAT(pm_in, '%H:%i:%s') as pm_in, 
+          TIME_FORMAT(pm_out, '%H:%i:%s') as pm_out
+        FROM employee_schedules
+        WHERE employee_id = ? AND date BETWEEN ? AND ?
+      `, [employeeId, startDate, endDate]);
+
+      const overridesByDate = {};
+      for (const override of overrideRows) {
+        // Force exact string date format without timezone shift issues
+        const dt = new Date(override.date);
+        const dateStr = [
+          dt.getFullYear(),
+          String(dt.getMonth() + 1).padStart(2, '0'),
+          String(dt.getDate()).padStart(2, '0')
+        ].join('-');
+        overridesByDate[dateStr] = override;
+      }
 
       // Get DTR records
       const query = `
@@ -825,9 +1057,19 @@ app.get('/api/dtr/:employeeId', async (req, res) => {
       
       const [results] = await connection.query(query, [employeeId, startDate, endDate]);
       
-      // Calculate tardiness for each record
+      // Calculate tardiness for each record using default schedule or override
       const formattedResults = results.map(record => {
-        const tardinessMinutes = calculateTardiness(record, employeeSchedule, shiftType);
+        const dt = new Date(record.date);
+        const recordDateStr = [
+          dt.getFullYear(),
+          String(dt.getMonth() + 1).padStart(2, '0'),
+          String(dt.getDate()).padStart(2, '0')
+        ].join('-');
+        
+        const activeSchedule = overridesByDate[recordDateStr] || employeeSchedule;
+        const activeShiftType = overridesByDate[recordDateStr] ? detectShiftTypeFromSchedule(activeSchedule) : defaultShiftType;
+        
+        const tardinessMinutes = calculateTardiness(record, activeSchedule, activeShiftType);
         
         return {
           ...record,
@@ -835,7 +1077,8 @@ app.get('/api/dtr/:employeeId', async (req, res) => {
           am_out: formatTimeForDisplay(record.am_out),
           pm_in: formatTimeForDisplay(record.pm_in),
           pm_out: formatTimeForDisplay(record.pm_out),
-          tardiness: tardinessMinutes
+          tardiness: tardinessMinutes,
+          is_override: !!overridesByDate[recordDateStr]
         };
       });
       

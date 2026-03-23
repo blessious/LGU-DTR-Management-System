@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Loader2, Users, UserCheck, Briefcase, TrendingUp, Sparkles } from "lucide-react";
+import { Plus, Loader2, Users, UserCheck, Briefcase, TrendingUp, Sparkles, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import EmployeeInfoModal from "@/components/EmployeeInfoModal";
+import BulkEditScheduleModal from "@/components/BulkEditScheduleModal";
 import { usePrivileges } from "@/hooks/usePrivileges"; 
 
 export default function Employees() {
@@ -19,6 +20,7 @@ export default function Employees() {
   const [loading, setLoading] = useState(true);
   const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
 
   // Stats state
@@ -55,6 +57,16 @@ export default function Employees() {
   useEffect(() => {
     fetchEmployees();
     fetchStats();
+
+    // Listen for Edit Schedule requests from EmployeeInfoModal
+    const handleOpenBulkEdit = (e: any) => {
+      setIsBulkEditModalOpen(true);
+      // We'll pass the employeeId to the modal via state if needed
+      // For now, it just opens the modal as requested
+    };
+
+    window.addEventListener('openBulkEdit', handleOpenBulkEdit);
+    return () => window.removeEventListener('openBulkEdit', handleOpenBulkEdit);
   }, []);
 
   useEffect(() => {
@@ -383,13 +395,23 @@ export default function Employees() {
         onSearchChange={setSearchTerm}
         actions={
         canCreate() ? (
-                    <Button 
-                      className="btn-gradient hover:shadow-lg transform hover:scale-105 transition-all duration-300" 
-                      onClick={() => setIsAddEmployeeModalOpen(true)}
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add Employee
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline"
+                        className="hover:shadow-lg transform hover:scale-105 transition-all duration-300 border-primary/20 hover:border-primary text-primary" 
+                        onClick={() => setIsBulkEditModalOpen(true)}
+                      >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        Bulk Edit Schedule
+                      </Button>
+                      <Button 
+                        className="btn-gradient hover:shadow-lg transform hover:scale-105 transition-all duration-300" 
+                        onClick={() => setIsAddEmployeeModalOpen(true)}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Employee
+                      </Button>
+                    </div>
                   ) : null
                 }
               />
@@ -429,6 +451,12 @@ export default function Employees() {
         onClose={() => setIsEmployeeModalOpen(false)}
         employee={selectedEmployee}
         onEmployeeUpdated={fetchEmployees}
+      />
+
+      {/* Bulk Edit Schedule Modal */}
+      <BulkEditScheduleModal
+        isOpen={isBulkEditModalOpen}
+        onClose={() => setIsBulkEditModalOpen(false)}
       />
 
 <Dialog open={isAddEmployeeModalOpen} onOpenChange={setIsAddEmployeeModalOpen}>

@@ -68,6 +68,25 @@ def get_employee_schedule(cursor, employee_id):
         print(f"Error getting schedule for employee {employee_id}: {e}")
         return None
 
+def get_employee_overrides(cursor, employee_id):
+    """Get all schedule overrides for an employee as a dictionary keyed by date string"""
+    try:
+        cursor.execute("""
+            SELECT date, am_in, am_out, pm_in, pm_out
+            FROM employee_schedules
+            WHERE employee_id = %s
+        """, (employee_id,))
+        results = cursor.fetchall()
+        overrides = {}
+        for r in results:
+            # r[0] is datetime.date, convert to string YYYY-MM-DD
+            date_str = str(r[0])
+            overrides[date_str] = (r[1], r[2], r[3], r[4])
+        return overrides
+    except Exception as e:
+        print(f"Error getting overrides for employee {employee_id}: {e}")
+        return {}
+
 def remove_duplicate_imports(cursor, employee_id):
     """Remove duplicate imports for an employee (same employee_id + same minute)"""
     try:
@@ -108,13 +127,14 @@ def refresh_employee_dtr(cursor, employee_id):
     # First remove duplicate imports for this employee
     remove_duplicate_imports(cursor, employee_id)
     
-    # Get employee schedule
-    schedule = get_employee_schedule(cursor, employee_id)
-    if not schedule:
+    # Get employee default schedule
+    default_schedule = get_employee_schedule(cursor, employee_id)
+    if not default_schedule:
         print(f"  [WARN] No schedule found for employee {employee_id}")
         return 0
 
-    regular_am_in, regular_am_out, regular_pm_in, regular_pm_out = schedule
+    # Get all schedule overrides for this employee
+    overrides = get_employee_overrides(cursor, employee_id)
     
     # Get all imports for this employee
     try:
@@ -161,7 +181,15 @@ def refresh_employee_dtr(cursor, employee_id):
             time_deltas.append(td)
         
         # ====== STEP 1: CATEGORIZE SCANS BY TIME PERIOD ======
-        lunch_start = regular_am_out  # e.g., 12:00
+        # Determine the effective schedule for this specific date
+        if str(date_str) in overrides:
+            effective_schedule = overrides[str(date_str)]
+        else:
+            effective_schedule = default_schedule
+            
+        regular_am_in, regular_am_out, regular_pm_in, regular_pm_out = effective_schedule
+        
+        lunch_start = regular_am_out   # e.g., 12:00
         lunch_end = regular_pm_in      # e.g., 13:00
         
         morning_scans = []      # Before lunch_start

@@ -719,4 +719,80 @@ async deleteDTR(id: number) {
   
   return response.json();
 },
+
+// Bulk update schedule
+async bulkUpdateSchedule(data: {
+  employeeIds: number[];
+  schedule: {
+    am_in: string;
+    am_out: string;
+    pm_in: string;
+    pm_out: string;
+  }
+}) {
+  const response = await fetch(`${API_URL}/api/employees/bulk-schedule`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to bulk update default schedule');
+  }
+  
+  return response.json();
+},
+
+// Bulk update Schedule Override (Specific Dates)
+async bulkUpdateScheduleOverrides(data: {
+  employeeIds: number[];
+  startDate: string;
+  endDate: string;
+  skipWeekends: boolean;
+  schedule: {
+    am_in: string;
+    am_out: string;
+    pm_in: string;
+    pm_out: string;
+  }
+}) {
+  const response = await fetch(`${API_URL}/api/employees/bulk-schedule-overrides`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to apply schedule override');
+  }
+  
+  return response.json();
+  },
+
+  // Get individual employee schedule overrides
+  async getScheduleOverrides(employeeId: number) {
+    const response = await fetch(`${API_URL}/api/employees/${employeeId}/overrides`);
+    if (!response.ok) throw new Error('Failed to fetch schedule overrides');
+    return response.json();
+  },
+
+  async deleteScheduleOverride(id: number) {
+    const response = await fetch(`${API_URL}/api/employees/overrides/${id}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to delete schedule override');
+    return response.json();
+  },
+
+  async getGroupedScheduleOverrides(employeeId: number) {
+    const response = await fetch(`${API_URL}/api/employees/${employeeId}/overrides-grouped`);
+    if (!response.ok) throw new Error('Failed to fetch grouped schedule overrides');
+    return response.json();
+  }
 };
