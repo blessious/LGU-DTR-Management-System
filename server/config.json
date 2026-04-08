@@ -7,6 +7,6 @@
     "port": 3306
   },
   "export": {
-    "path": "C:\\Users\\admin\\Documents\\DTR EXPORTS PATH TEST"
+    "path": "exports"
   }
 }

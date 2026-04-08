@@ -7,7 +7,7 @@ import datetime
 import calendar
 
 # Import shared configuration
-from config import get_db_config, get_export_path
+from config import get_db_config, get_export_path, ensure_export_directories
 
 def get_db_connection():
     """Get database connection using config from config.json"""
@@ -64,6 +64,9 @@ def create_mass_pdf(office, employee_type, noter_signatory, noter_position,
     
     # Get export path from config
     export_folder = get_export_path()
+    
+    # Ensure export directories exist
+    ensure_export_directories()
     
     # Create output directory
     output_dir = os.path.join(export_folder, 'previews')

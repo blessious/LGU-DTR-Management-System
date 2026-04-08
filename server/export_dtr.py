@@ -17,7 +17,7 @@ import mysql.connector
 from cryptography.fernet import Fernet
 
 # Import shared configuration
-from config import get_db_config, get_export_path
+from config import get_db_config, get_export_path, ensure_export_directories
 
 class Database:
     def __init__(self, host, database, user, password, port=3306):
@@ -118,6 +118,9 @@ def export_dtr(employee_id, noter_signatory, noter_position, first_month, first_
     
     # Get database configuration from config.json
     db_config = get_db_config()
+    
+    # Ensure export directories exist
+    ensure_export_directories()
     
     # Initialize database connection
     db = Database(
@@ -222,9 +225,16 @@ def export_dtr(employee_id, noter_signatory, noter_position, first_month, first_
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
     if preview:
-        filename = os.path.join(export_folder, 'previews', str(employee_id))
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        # Convert relative path to absolute if needed
+        if not os.path.isabs(export_folder):
+            export_folder = os.path.join(script_dir, export_folder)
+        previews_dir = os.path.join(export_folder, 'previews')
+        os.makedirs(previews_dir, exist_ok=True)
+        filename = os.path.join(previews_dir, str(employee_id))
     else:
+        # Convert relative path to absolute if needed
+        if not os.path.isabs(export_folder):
+            export_folder = os.path.join(script_dir, export_folder)
         filename = os.path.join(export_folder, employee_office, employee_name, 
                                f'{months[first_month - 1]} {first_year}')
         os.makedirs(os.path.dirname(filename), exist_ok=True)

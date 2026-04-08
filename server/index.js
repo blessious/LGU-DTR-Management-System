@@ -1484,34 +1484,47 @@ app.get('/api/dtr/pdf-preview/:filename', (req, res) => {
     
     // Check if exportPath is absolute or relative
     let filePath;
+    let previewsDir;
+    
     if (path.isAbsolute(exportPath)) {
       // Absolute path like "C:\Users\admin\Documents\DTR EXPORTS PATH"
-      filePath = path.join(exportPath, 'previews', filename);
+      previewsDir = path.join(exportPath, 'previews');
+      filePath = path.join(previewsDir, filename);
     } else {
       // Relative path like "exports"
-      filePath = path.join(__dirname, exportPath, 'previews', filename);
+      previewsDir = path.join(__dirname, exportPath, 'previews');
+      filePath = path.join(previewsDir, filename);
+    }
+    
+    // Ensure .pdf extension is added if not present
+    if (!filePath.endsWith('.pdf')) {
+      filePath = filePath + '.pdf';
     }
     
     console.log('🔍 Looking for PDF at:', filePath);
     console.log('📁 Export path from config:', exportPath);
     console.log('📄 Filename:', filename);
+    console.log('📂 Previews directory:', previewsDir);
     
     if (!fs.existsSync(filePath)) {
       console.error('❌ PDF file not found at:', filePath);
       
       // Also check what files ARE in the previews folder
-      const previewsDir = path.isAbsolute(exportPath) 
-        ? path.join(exportPath, 'previews')
-        : path.join(__dirname, exportPath, 'previews');
-      
       if (fs.existsSync(previewsDir)) {
         const files = fs.readdirSync(previewsDir);
         console.log('📂 Files in previews folder:', files);
       } else {
         console.error('❌ Previews folder does not exist:', previewsDir);
+        console.error('   Creating previews folder...');
+        try {
+          fs.mkdirSync(previewsDir, { recursive: true });
+          console.log('✓ Previews folder created');
+        } catch (err) {
+          console.error('   Failed to create previews folder:', err.message);
+        }
       }
       
-      return res.status(404).json({ message: 'PDF file not found' });
+      return res.status(404).json({ message: 'PDF file not found', path: filePath });
     }
 
     console.log('✅ PDF file found, sending to browser...');
@@ -4257,6 +4270,33 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📁 Config file: ${CONFIG_FILE_PATH}`);
+  
+  // Ensure export directories exist
+  const currentConfig = loadConfig();
+  const exportPath = currentConfig.export?.path || 'exports';
+  let exportDir, previewsDir;
+  
+  if (path.isAbsolute(exportPath)) {
+    exportDir = exportPath;
+    previewsDir = path.join(exportPath, 'previews');
+  } else {
+    exportDir = path.join(__dirname, exportPath);
+    previewsDir = path.join(__dirname, exportPath, 'previews');
+  }
+  
+  try {
+    if (!fs.existsSync(exportDir)) {
+      fs.mkdirSync(exportDir, { recursive: true });
+      console.log(`✅ Created export directory: ${exportDir}`);
+    }
+    if (!fs.existsSync(previewsDir)) {
+      fs.mkdirSync(previewsDir, { recursive: true });
+      console.log(`✅ Created previews directory: ${previewsDir}`);
+    }
+  } catch (err) {
+    console.error('❌ Failed to create export directories:', err.message);
+  }
+  
   console.log('\n💡 Session monitoring enabled');
   console.log('💡 Active sessions will be displayed every 60 seconds');
   

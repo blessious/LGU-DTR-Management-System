@@ -1409,17 +1409,17 @@ class DTR:
 
         now = datetime.datetime.now()
         if preview:
-            if not os.path.isdir(f'{self.export_folder}\previews'):
-                os.makedirs(f'{self.export_folder}\previews')
-            filename = f'{self.export_folder}\previews\{employee_id}'
+            previews_dir = os.path.join(self.export_folder, 'previews')
+            os.makedirs(previews_dir, exist_ok=True)
+            filename = os.path.join(previews_dir, str(employee_id))
         else:
-            if not os.path.isdir(f'{self.export_folder}\{employee_office}\{employee_name}'):
-                os.makedirs(f'{self.export_folder}\{employee_office}\{employee_name}')
+            office_name_dir = os.path.join(self.export_folder, employee_office, employee_name)
+            os.makedirs(office_name_dir, exist_ok=True)
             second_name_string = ''
             if second_month != 0:
                 if months[first_month - 1] != months[second_month - 1]:
                         second_name_string = f' - {months[second_month - 1]} {second_year}'
-            filename = f'{self.export_folder}\{employee_office}\{employee_name}\{months[first_month - 1]} {first_year} {second_name_string} v({now.date()}-{now.hour}-{now.minute}-{now.second})'
+            filename = os.path.join(office_name_dir, f'{months[first_month - 1]} {first_year} {second_name_string} v({now.date()}-{now.hour}-{now.minute}-{now.second})')
 
         if export_to.lower() == 'excel':
             workbook = openpyxl.load_workbook(filename = f'{self._directory}/templates/format.xlsx')

@@ -63,3 +63,21 @@ def get_export_path():
     """Get export path configuration"""
     config = load_config()
     return config.get('export', {}).get('path', 'exports')
+
+def ensure_export_directories():
+    """Ensure all required export directories exist"""
+    export_path = get_export_path()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Convert to absolute path if relative
+    if not os.path.isabs(export_path):
+        export_path = os.path.join(script_dir, export_path)
+    
+    # Create main export directory
+    os.makedirs(export_path, exist_ok=True)
+    
+    # Create previews subdirectory
+    previews_dir = os.path.join(export_path, 'previews')
+    os.makedirs(previews_dir, exist_ok=True)
+    
+    return export_path
