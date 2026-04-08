@@ -16,56 +16,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 import mysql.connector
 from cryptography.fernet import Fernet
 
-# Import shared configuration
+# Import shared configuration and database manager
 from config import get_db_config, get_export_path, ensure_export_directories
-
-class Database:
-    def __init__(self, host, database, user, password, port=3306):
-        self.connection = mysql.connector.connect(
-            host=host,
-            database=database,
-            user=user,
-            password=password,
-            port=port
-        )
-        self.cursor = self.connection.cursor()
-    
-    def get_employee(self, employee_id):
-        query = """
-        SELECT id, name, position, office, registered, am_in, am_out, pm_in, pm_out, noter, signatory, regular 
-        FROM employees 
-        WHERE id = %s
-        """
-        self.cursor.execute(query, (employee_id,))
-        return self.cursor.fetchone()
-    
-    def get_dtr_by_month(self, employee_id, month, year, cut='full'):
-        if cut == 'full':
-            query = """
-            SELECT date, am_in, am_out, pm_in, pm_out 
-            FROM dtrs 
-            WHERE employee_id = %s AND YEAR(date) = %s AND MONTH(date) = %s
-            ORDER BY date
-            """
-            self.cursor.execute(query, (employee_id, year, month))
-        elif cut == 'first':
-            query = """
-            SELECT date, am_in, am_out, pm_in, pm_out 
-            FROM dtrs 
-            WHERE employee_id = %s AND YEAR(date) = %s AND MONTH(date) = %s AND DAY(date) < 16
-            ORDER BY date
-            """
-            self.cursor.execute(query, (employee_id, year, month))
-        elif cut == 'last':
-            query = """
-            SELECT date, am_in, am_out, pm_in, pm_out 
-            FROM dtrs 
-            WHERE employee_id = %s AND YEAR(date) = %s AND MONTH(date) = %s AND DAY(date) >= 16
-            ORDER BY date
-            """
-            self.cursor.execute(query, (employee_id, year, month))
-        
-        return self.cursor.fetchall()
+from database import Database
 
 def detect_shift_type(am_in, pm_out):
     """

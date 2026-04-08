@@ -7,10 +7,11 @@ import collections
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-# Import shared configuration
+# Import shared configuration and database manager
 from config import get_db_config
+from database import Database
 
-# Database configuration - USE DYNAMIC SETTINGS FROM config.json
+# Database configuration - USE DYNAMIC SETTINGS FROM config.json (kept for reference)
 db_config_dict = get_db_config()
 db_config = {
     'host': db_config_dict.get('host', '192.168.1.52'),
@@ -52,15 +53,15 @@ def timedelta_to_time(delta):
     result_time = result_datetime.time()
     return result_time
 
-def get_employee_schedule(cursor, employee_id):
+def get_employee_schedule(db, employee_id):
     """Get employee's regular schedule"""
     try:
-        cursor.execute("""
+        db.execute("""
             SELECT am_in, am_out, pm_in, pm_out
             FROM employees
             WHERE id = %s
         """, (employee_id,))
-        result = cursor.fetchone()
+        result = db.fetchone()
         if result:
             return result
         return None
@@ -68,15 +69,15 @@ def get_employee_schedule(cursor, employee_id):
         print(f"Error getting schedule for employee {employee_id}: {e}")
         return None
 
-def get_employee_overrides(cursor, employee_id):
+def get_employee_overrides(db, employee_id):
     """Get all schedule overrides for an employee as a dictionary keyed by date string"""
     try:
-        cursor.execute("""
+        db.execute("""
             SELECT date, am_in, am_out, pm_in, pm_out
             FROM employee_schedules
             WHERE employee_id = %s
         """, (employee_id,))
-        results = cursor.fetchall()
+        results = db.fetchall()
         overrides = {}
         for r in results:
             # r[0] is datetime.date, convert to string YYYY-MM-DD
@@ -87,7 +88,7 @@ def get_employee_overrides(cursor, employee_id):
         print(f"Error getting overrides for employee {employee_id}: {e}")
         return {}
 
-def remove_duplicate_imports(cursor, employee_id):
+def remove_duplicate_imports(db, employee_id):
     """Remove duplicate imports for an employee (same employee_id + same minute)"""
     try:
         delete_query = """
@@ -99,8 +100,10 @@ def remove_duplicate_imports(cursor, employee_id):
                 i1.employee_id = %s AND
                 DATE_FORMAT(i1.created_at, '%Y-%m-%d %H:%i') = DATE_FORMAT(i2.created_at, '%Y-%m-%d %H:%i')
         """
-        cursor.execute(delete_query, (employee_id,))
-        deleted_count = cursor.rowcount
+        db.execute(delete_query, (employee_id,))
+        # For rowcount, we need to check if the database object supports it
+        # If not, we just print that we attempted the deletion
+        deleted_count = getattr(db.cursor, 'rowcount', 0)
         if deleted_count > 0:
             print(f"    Removed {deleted_count} duplicate imports")
         return deleted_count
@@ -108,7 +111,7 @@ def remove_duplicate_imports(cursor, employee_id):
         print(f"    [ERROR] Failed to remove duplicates: {e}")
         return 0
 
-def refresh_employee_dtr(cursor, employee_id):
+def refresh_employee_dtr(db, employee_id):
     """
     Refresh DTR for a single employee with SCHEDULE-DEPENDENT logic
     
@@ -125,26 +128,26 @@ def refresh_employee_dtr(cursor, employee_id):
     """
     
     # First remove duplicate imports for this employee
-    remove_duplicate_imports(cursor, employee_id)
+    remove_duplicate_imports(db, employee_id)
     
     # Get employee default schedule
-    default_schedule = get_employee_schedule(cursor, employee_id)
+    default_schedule = get_employee_schedule(db, employee_id)
     if not default_schedule:
         print(f"  [WARN] No schedule found for employee {employee_id}")
         return 0
 
     # Get all schedule overrides for this employee
-    overrides = get_employee_overrides(cursor, employee_id)
+    overrides = get_employee_overrides(db, employee_id)
     
     # Get all imports for this employee
     try:
-        cursor.execute("""
+        db.execute("""
             SELECT id, employee_id, created_at
             FROM imports
             WHERE employee_id = %s
             ORDER BY created_at
         """, (employee_id,))
-        dtrs = cursor.fetchall()
+        dtrs = db.fetchall()
     except Exception as e:
         print(f"  [ERROR] Failed to fetch imports for employee {employee_id}: {e}")
         return 0
@@ -341,19 +344,19 @@ def refresh_employee_dtr(cursor, employee_id):
 
         # Check if a DTR with current date exists
         try:
-            cursor.execute("""
+            db.execute("""
                 SELECT id, locked
                 FROM dtrs
                 WHERE employee_id = %s AND date = %s
             """, (employee_id, date_str))
 
-            existing = cursor.fetchone()
+            existing = db.fetchone()
 
             if existing:
                 dtr_id, locked = existing
                 if not locked:
                     # OVERWRITE: Update existing record if not locked
-                    cursor.execute("""
+                    db.execute("""
                         UPDATE dtrs
                         SET am_in = %s, am_out = %s, pm_in = %s, pm_out = %s, locked = 0
                         WHERE id = %s
@@ -364,7 +367,7 @@ def refresh_employee_dtr(cursor, employee_id):
                     records_skipped_locked += 1
             else:
                 # INSERT: Create new record
-                cursor.execute("""
+                db.execute("""
                     INSERT INTO dtrs (employee_id, date, am_in, am_out, pm_in, pm_out, locked)
                     VALUES (%s, %s, %s, %s, %s, %s, 0)
                 """, (employee_id, date_str, am_in, am_out, pm_in, pm_out))
@@ -399,8 +402,14 @@ def main():
         print_header("DTR Refresh - Schedule-Dependent Logic")
         
         print_status("start", "Connecting to database...")
-        db = mysql.connector.connect(**db_config)
-        cursor = db.cursor()
+        # Use the new Database class with automatic reconnection support
+        db = Database(
+            host=db_config.get('host', '192.168.1.52'),
+            user=db_config.get('user', 'adtr'),
+            password=db_config.get('password', 'adtr'),
+            database=db_config.get('database', 'bless_dtr_test'),
+            port=db_config.get('port', 3306)
+        )
         print_status("ok", "Database connection successful")
 
         if employee_id:
@@ -408,7 +417,7 @@ def main():
             print_header(f"Refreshing DTR for Employee {employee_id}")
             print_status("info", "Processing ALL historical imports for this employee...")
             
-            records_processed = refresh_employee_dtr(cursor, employee_id)
+            records_processed = refresh_employee_dtr(db, employee_id)
             print_status("ok", f"Refreshed employee ID {employee_id} - {records_processed} records processed")
             
             result = {
@@ -421,8 +430,8 @@ def main():
             print_header("Refreshing DTR for All Employees")
             print_status("info", "Processing ALL historical imports for all employees...")
             
-            cursor.execute("SELECT id FROM employees")
-            employees = cursor.fetchall()
+            db.execute("SELECT id FROM employees")
+            employees = db.fetchall()
             employee_ids = [emp_id for (emp_id,) in employees]
             
             
@@ -432,7 +441,7 @@ def main():
 
             for i, emp_id in enumerate(employee_ids, 1):
                 try:
-                    records_processed = refresh_employee_dtr(cursor, emp_id)
+                    records_processed = refresh_employee_dtr(db, emp_id)
                     
                     success += 1
                     total_records += records_processed
@@ -459,17 +468,8 @@ def main():
         print_status("ok", "Database changes committed")
         print(json.dumps(result))
 
-    except mysql.connector.Error as err:
-        error_msg = f"MySQL Error: {err}"
-        print_status("error", error_msg)
-        result = {
-            'success': False,
-            'error': error_msg
-        }
-        print(json.dumps(result))
-        sys.exit(1)
-    except Exception as e:
-        error_msg = f"Error in main: {str(e)}"
+    except Exception as err:
+        error_msg = f"Error: {str(err)}"
         print_status("error", error_msg)
         result = {
             'success': False,
@@ -479,10 +479,12 @@ def main():
         sys.exit(1)
 
     finally:
-        if 'db' in locals() and db.is_connected():
-            cursor.close()
-            db.close()
-            print_status("info", "Database connection closed")
+        if 'db' in locals():
+            try:
+                db.close()
+                print_status("info", "Database connection closed")
+            except:
+                pass
 
 if __name__ == '__main__':
     main()

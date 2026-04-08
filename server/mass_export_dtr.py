@@ -1,30 +1,16 @@
 #!/usr/bin/env python3
 import sys
 import os
-import mysql.connector
 from PyPDF2 import PdfWriter, PdfReader
 import datetime
 import calendar
 
-# Import shared configuration
+# Import shared configuration and database manager
 from config import get_db_config, get_export_path, ensure_export_directories
+from database import Database
 
-def get_db_connection():
-    """Get database connection using config from config.json"""
-    db_config = get_db_config()
-    return mysql.connector.connect(
-        host=db_config.get('host', '192.168.1.52'),
-        user=db_config.get('user', 'adtr'),
-        password=db_config.get('password', 'adtr'),
-        database=db_config.get('database', 'bless_dtr_test'),
-        port=int(db_config.get('port', 3306))
-    )
-
-def get_employees_by_office(office, employee_type):
+def get_employees_by_office(db, office, employee_type):
     """Get employees based on office and employee type"""
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
     query = "SELECT id, name, position, office FROM employees WHERE office = %s AND registered = 1"
     params = [office]
     
@@ -35,11 +21,17 @@ def get_employees_by_office(office, employee_type):
     
     query += " ORDER BY name"
     
-    cursor.execute(query, params)
-    employees = cursor.fetchall()
+    db.execute(query, params)
+    employees = []
+    for row in db.fetchall():
+        # Convert to dictionary format for compatibility
+        employees.append({
+            'id': row[0],
+            'name': row[1],
+            'position': row[2],
+            'office': row[3]
+        })
     
-    cursor.close()
-    conn.close()
     return employees
 
 def create_mass_pdf(office, employee_type, noter_signatory, noter_position, 
@@ -48,10 +40,22 @@ def create_mass_pdf(office, employee_type, noter_signatory, noter_position,
     Create a PDF containing DTRs for all employees in the specified office
     """
     
+    # Initialize database connection with automatic reconnection support
+    db_config = get_db_config()
+    db = Database(
+        host=db_config.get('host', '192.168.1.52'),
+        database=db_config.get('database', 'bless_dtr_test'),
+        user=db_config.get('user', 'adtr'),
+        password=db_config.get('password', 'adtr'),
+        port=db_config.get('port', 3306)
+    )
+    
     # Get employees
-    employees = get_employees_by_office(office, employee_type)
+    employees = get_employees_by_office(db, office, employee_type)
     if not employees:
         raise Exception(f"No employees found for office: {office}, type: {employee_type}")
+    
+    db.close()
     
     print(f"Processing {len(employees)} employees for mass PDF generation")
     

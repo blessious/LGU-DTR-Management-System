@@ -7,18 +7,19 @@ Based on the original dtr.py logic - NO TIME CORRECTION
 import sys
 import json
 import datetime
-import mysql.connector
 import zk
 
-# Import shared configuration
+# Import shared configuration and database manager
 from config import get_db_config
+from database import Database
 
 def get_biometric_from_db(biometric_id):
     """Get biometric device info from database"""
     try:
         db_config = get_db_config()
         
-        conn = mysql.connector.connect(
+        # Use the new Database class with automatic reconnection
+        db = Database(
             host=db_config.get('host', '192.168.1.52'),
             user=db_config.get('user', 'adtr'),
             password=db_config.get('password', 'adtr'),
@@ -26,12 +27,9 @@ def get_biometric_from_db(biometric_id):
             port=int(db_config.get('port', 3306))
         )
         
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM biometrics WHERE id = %s", (biometric_id,))
-        biometric_data = cursor.fetchone()
-        
-        cursor.close()
-        conn.close()
+        db.execute("SELECT * FROM biometrics WHERE id = %s", (biometric_id,))
+        biometric_data = db.fetchone()
+        db.close()
         
         return biometric_data
     except Exception as e:
