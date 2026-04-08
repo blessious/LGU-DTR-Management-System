@@ -148,8 +148,13 @@ def refresh_employee_dtr(db, employee_id):
             ORDER BY created_at
         """, (employee_id,))
         dtrs = db.fetchall()
+        
+        if not dtrs:
+            print(f"  [INFO] No imports found for employee {employee_id}")
+            return 0
+            
     except Exception as e:
-        print(f"  [ERROR] Failed to fetch imports for employee {employee_id}: {e}")
+        print(f"  [ERROR] Failed to fetch imports for employee {employee_id}: {e}", file=sys.stderr)
         return 0
 
     # Group the data by employee_id and date (using defaultdict)

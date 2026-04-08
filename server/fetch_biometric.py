@@ -48,12 +48,15 @@ def fetch_biometric_attendance(biometric_id, start_date=None, end_date=None):
         if not biometric_data:
             raise Exception(f'Biometric device {biometric_id} not found')
         
-        print(f"Connecting to biometric device: {biometric_data['ip_address']}:{biometric_data.get('port', 4370)}", file=sys.stderr)
+        # Unpack biometric data tuple (id, name, ip_address, port, active)
+        bm_id, bm_name, bm_ip, bm_port, bm_active = biometric_data
+        
+        print(f"Connecting to biometric device: {bm_ip}:{bm_port}", file=sys.stderr)
         
         # Create ZK instance (same as original dtr.py)
         biometric = zk.ZK(
-            biometric_data['ip_address'],
-            port=int(biometric_data.get('port', 4370)),
+            bm_ip,
+            port=int(bm_port),
             timeout=5000,
             password=0,
             force_udp=False,

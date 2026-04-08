@@ -73,8 +73,8 @@ class Database:
                     connection_timeout=10
                 )
                 
-                # Create cursor for this connection (return dictionaries instead of tuples)
-                self.cursor = self.connection.cursor(dictionary=True)
+                # Create cursor for this connection
+                self.cursor = self.connection.cursor()
                 self._last_activity = datetime.now()
                 
                 logger.info(f"✓ Successfully connected to database: {self.host}/{self.database}")
