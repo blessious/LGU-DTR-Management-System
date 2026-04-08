@@ -384,7 +384,16 @@ def main():
     employee_id = None
     
     if len(sys.argv) > 1:
-        employee_id = sys.argv[1]
+        try:
+            # Normalize CLI arg to int so it matches DB integer ids and dict keys.
+            employee_id = int(sys.argv[1])
+        except ValueError:
+            print_status("error", f"Invalid employee id: {sys.argv[1]}")
+            print(json.dumps({
+                'success': False,
+                'error': f'Invalid employee id: {sys.argv[1]}'
+            }))
+            sys.exit(1)
 
     try:
         print_header("DTR Refresh - Schedule-Dependent Logic")
