@@ -216,9 +216,9 @@ def export_dtr(employee_id, noter_signatory, noter_position, first_month, first_
             sheet['A4'] = employee_name
             sheet['A6'] = f'{months[first_month - 1]} {first_date_range_string}, {first_year}'
             sheet['F7'] = regular_time
-            sheet['C48'] = employee_signatory
+            sheet['C48'] = employee_signatory.upper()
             sheet['C49'] = employee_position
-            sheet['C52'] = noter_signatory
+            sheet['C52'] = noter_signatory.upper()
             sheet['C53'] = noter_position
 
             # Fill DTR data for first period
@@ -248,9 +248,9 @@ def export_dtr(employee_id, noter_signatory, noter_position, first_month, first_
                 sheet['I4'] = employee_name
                 sheet['I6'] = f'{months[second_month - 1]} {second_date_range_string}, {second_year}'
                 sheet['N7'] = regular_time
-                sheet['K48'] = employee_signatory
+                sheet['K48'] = employee_signatory.upper()
                 sheet['K49'] = employee_position
-                sheet['K52'] = noter_signatory
+                sheet['K52'] = noter_signatory.upper()
                 sheet['K53'] = noter_position
                 
                 # Fill DTR data for second period
@@ -310,13 +310,13 @@ def export_dtr(employee_id, noter_signatory, noter_position, first_month, first_
             can.drawString(213, 704, regular_time)
 
             can.setFont('Segoe UI Bold', 9)
-            can.drawCentredString(178.5, 213.5, employee_signatory)
+            can.drawCentredString(178.5, 213.5, employee_signatory.upper())
 
             can.setFont('Times New Roman', 9)
             can.drawCentredString(178.5, 201, employee_position)
 
             can.setFont('Segoe UI Bold', 9)
-            can.drawCentredString(178.5, 164, noter_signatory)
+            can.drawCentredString(178.5, 164, noter_signatory.upper())
 
             can.setFont('Times New Roman', 9)
             can.drawCentredString(178.5, 152, noter_position)
@@ -361,13 +361,13 @@ def export_dtr(employee_id, noter_signatory, noter_position, first_month, first_
                 can.drawString(467.5, 704, regular_time)
 
                 can.setFont('Segoe UI Bold', 9)
-                can.drawCentredString(433, 213.5, employee_signatory)
+                can.drawCentredString(433, 213.5, employee_signatory.upper())
 
                 can.setFont('Times New Roman', 9)
                 can.drawCentredString(433, 201, employee_position)
 
                 can.setFont('Segoe UI Bold', 9)
-                can.drawCentredString(433, 164, noter_signatory)
+                can.drawCentredString(433, 164, noter_signatory.upper())
 
                 can.setFont('Times New Roman', 9)
                 can.drawCentredString(433, 152, noter_position)
