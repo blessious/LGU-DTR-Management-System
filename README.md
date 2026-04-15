@@ -49,6 +49,7 @@ Below are screenshots of the application useful for portfolio/job-application pu
 For detailed instructions on how to set up and run this project on another computer, please refer to the **[RUNNING_GUIDE.md](./RUNNING_GUIDE.md)**.
 
 1. Install Node.js, Python, and MySQL.
-2. Import `database.sql`.
+2. Run `npm run sanitize:sql`, then import `database.deployment.sql`.
 3. Run `npm install` and `pip install -r requirements.txt`.
 4. Run `run.bat`.
+5. For customer handoff, run `npm run release:package` and distribute the ZIP from `release/`.

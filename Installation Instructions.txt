@@ -1,0 +1,39 @@
+MuniWeb Quick Installation (Windows)
+
+1) Install prerequisites:
+	- Node.js 18+
+	- Python 3.8+
+	- MySQL Server
+
+2) Create database: bless_dtr_test
+
+3) Install dependencies from project root:
+	npm install
+	cd server && npm install && cd ..
+	pip install -r requirements.txt
+	python -m pip install --upgrade pywin32
+
+4) Generate sanitized deployment SQL and import it:
+	npm run sanitize:sql
+	Import database.deployment.sql into bless_dtr_test
+	(Use database.sql only for internal/dev use)
+
+5) Configure without code changes:
+	powershell -ExecutionPolicy Bypass -File .\setup.ps1
+
+6) Start app:
+	- run.bat (visible)
+	- START_SYSTEM.vbs (hidden)
+
+7) Open:
+	http://localhost:8080
+
+8) First deployment login:
+	- Username: admin
+	- Password: ChangeMe123!
+	- Change password immediately after first login
+
+9) Build client release ZIP:
+	npm run sanitize:sql
+	npm run release:package
+	Output is placed under release\

@@ -1,0 +1,12 @@
+{
+  "database": {
+    "host": "localhost",
+    "user": "root",
+    "password": "",
+    "database": "bless_dtr_test",
+    "port": 3306
+  },
+  "export": {
+    "path": "exports"
+  }
+}
