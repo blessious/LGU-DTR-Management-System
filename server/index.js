@@ -16,12 +16,12 @@ const activeSessions = new Map(); // Track active sessions
 // Middleware to track sessions
 app.use((req, res, next) => {
   // Extract session identifier
-  const sessionId = req.headers['x-session-id'] || 
-                    req.headers['authorization']?.split(' ')[1] || 
-                    `${req.ip}-${req.headers['user-agent']}`;
-  
+  const sessionId = req.headers['x-session-id'] ||
+    req.headers['authorization']?.split(' ')[1] ||
+    `${req.ip}-${req.headers['user-agent']}`;
+
   const now = Date.now();
-  
+
   // Update or create session
   if (!activeSessions.has(sessionId)) {
     activeSessions.set(sessionId, {
@@ -34,7 +34,7 @@ app.use((req, res, next) => {
       requestCount: 1,
       username: 'unknown'
     });
-    
+
     // Log new session
     console.log(`🔵 [SESSION] New session: ${sessionId.substring(0, 20)}...`);
     console.log(`   IP: ${req.ip}, Path: ${req.method} ${req.path}`);
@@ -46,12 +46,12 @@ app.use((req, res, next) => {
     session.path = req.path;
     session.method = req.method;
   }
-  
+
   // Clean up old sessions periodically
   if (Math.random() < 0.01) { // ~1% chance on each request
     cleanupOldSessions();
   }
-  
+
   next();
 });
 
@@ -59,22 +59,22 @@ app.use((req, res, next) => {
 function printActiveSessions() {
   console.log('\n📊 ACTIVE SESSIONS:');
   console.log('═'.repeat(60));
-  
+
   const now = Date.now();
   let activeCount = 0;
-  
+
   activeSessions.forEach((session, sessionId) => {
     const age = Math.floor((now - session.firstSeen) / 1000);
     const inactive = Math.floor((now - session.lastActivity) / 1000);
-    
+
     // Remove sessions inactive for more than 30 minutes
     if (inactive > 1800) {
       activeSessions.delete(sessionId);
       return;
     }
-    
+
     activeCount++;
-    
+
     console.log(`• Session: ${sessionId.substring(0, 20)}...`);
     console.log(`  IP: ${session.ip}`);
     console.log(`  User: ${session.username}`);
@@ -83,7 +83,7 @@ function printActiveSessions() {
     console.log(`  Last: ${session.method} ${session.path}`);
     console.log('');
   });
-  
+
   console.log(`Total active sessions: ${activeCount}`);
   console.log('═'.repeat(60) + '\n');
 }
@@ -92,16 +92,16 @@ function printActiveSessions() {
 function cleanupOldSessions() {
   const now = Date.now();
   let removedCount = 0;
-  
+
   activeSessions.forEach((session, sessionId) => {
     const inactive = Math.floor((now - session.lastActivity) / 1000);
-    
+
     if (inactive > 1800) { // 30 minutes
       activeSessions.delete(sessionId);
       removedCount++;
     }
   });
-  
+
   if (removedCount > 0) {
     console.log(`🧹 Cleaned up ${removedCount} inactive sessions`);
   }
@@ -182,7 +182,7 @@ function recreatePool(newConfig) {
   if (pool) {
     pool.end().catch(err => console.error('Error closing pool:', err));
   }
-  
+
   pool = mysql.createPool({
     host: newConfig.database.host,
     user: newConfig.database.user,
@@ -193,7 +193,7 @@ function recreatePool(newConfig) {
     connectionLimit: 10,
     queueLimit: 0
   });
-  
+
   console.log('✅ Database pool recreated with new configuration');
 }
 
@@ -224,15 +224,15 @@ app.get('/api/settings', async (req, res) => {
 app.post('/api/settings', async (req, res) => {
   try {
     const { host, database, username, password, exportPath } = req.body;
-    
+
     console.log('Updating settings:', { host, database, username, exportPath });
-    
+
     if (!host || !database || !username) {
-      return res.status(400).json({ 
-        error: 'Host, database, and username are required' 
+      return res.status(400).json({
+        error: 'Host, database, and username are required'
       });
     }
-    
+
     const newConfig = {
       database: {
         host: host,
@@ -245,7 +245,7 @@ app.post('/api/settings', async (req, res) => {
         path: exportPath || config.export.path
       }
     };
-    
+
     // Test connection
     try {
       const testPool = mysql.createPool({
@@ -258,11 +258,11 @@ app.post('/api/settings', async (req, res) => {
         connectionLimit: 1,
         queueLimit: 0
       });
-      
+
       const testConn = await testPool.getConnection();
       testConn.release();
       await testPool.end();
-      
+
       console.log('✅ Test connection successful');
     } catch (testError) {
       console.error('❌ Test connection failed:', testError);
@@ -271,13 +271,13 @@ app.post('/api/settings', async (req, res) => {
         details: testError.message
       });
     }
-    
+
     if (saveConfig(newConfig)) {
       config = newConfig;
       recreatePool(newConfig);
-      
+
       console.log('✅ Settings updated successfully');
-      
+
       res.json({
         message: 'Settings updated successfully',
         config: {
@@ -295,12 +295,12 @@ app.post('/api/settings', async (req, res) => {
     } else {
       throw new Error('Failed to save configuration file');
     }
-    
+
   } catch (error) {
     console.error('Error in POST /api/settings:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to update settings',
-      details: error.message 
+      details: error.message
     });
   }
 });
@@ -320,11 +320,11 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   fileFilter: (req, file, cb) => {
     const fileExtension = file.originalname.toLowerCase().split('.').pop();
-    
+
     // UPDATED: Accept .dat files
     if (['txt', 'xlsx', 'dat'].includes(fileExtension)) {
       cb(null, true);
@@ -354,36 +354,36 @@ app.post('/api/noters', async (req, res) => {
   let connection;
   try {
     const { name, position, office, signatory } = req.body;
-    
+
     console.log('Adding new department head:', { name, position, office, signatory });
 
     // Validate required fields
     if (!name || !position || !office || !signatory) {
-      return res.status(400).json({ 
-        error: 'All fields are required: name, position, office, signatory' 
+      return res.status(400).json({
+        error: 'All fields are required: name, position, office, signatory'
       });
     }
 
     connection = await pool.getConnection();
-    
+
     const query = `
       INSERT INTO noters (name, position, office, signatory)
       VALUES (?, ?, ?, ?)
     `;
-    
+
     const [result] = await connection.query(query, [name, position, office, signatory]);
-    
+
     console.log('Department head added successfully with ID:', result.insertId);
-    
-    res.json({ 
+
+    res.json({
       message: 'Department head added successfully',
       noter_id: result.insertId
     });
   } catch (error) {
     console.error('Error in POST /api/noters:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to add department head',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -405,7 +405,7 @@ app.get('/api/positions', async (req, res) => {
       "Manager",
       "Director"
     ];
-    
+
     res.json(positions);
   } catch (error) {
     console.error('Error in /api/positions:', error);
@@ -427,7 +427,7 @@ app.get('/api/offices', async (req, res) => {
       "Planning Office",
       "Budget Office"
     ];
-    
+
     res.json(offices);
   } catch (error) {
     console.error('Error in /api/offices:', error);
@@ -458,7 +458,7 @@ app.get('/api/employees/count', async (req, res) => {
 app.get('/api/attendance/:date', async (req, res) => {
   try {
     const { date } = req.params;
-    
+
     const query = `
       SELECT 
         e.id, 
@@ -474,9 +474,9 @@ app.get('/api/attendance/:date', async (req, res) => {
       WHERE d.date = ?
       ORDER BY e.id ASC
     `;
-    
+
     const [results] = await pool.query(query, [date]);
-    
+
     // Format the results to show null instead of "00:00"
     const formattedResults = results.map(record => ({
       ...record,
@@ -485,7 +485,7 @@ app.get('/api/attendance/:date', async (req, res) => {
       pm_in: formatTimeForDisplay(record.pm_in),
       pm_out: formatTimeForDisplay(record.pm_out)
     }));
-    
+
     res.json(formattedResults);
   } catch (error) {
     console.error('Error in /api/attendance/:date:', error);
@@ -507,7 +507,7 @@ app.get('/api/employees', async (req, res) => {
       FROM employees
       ORDER BY name
     `;
-    
+
     const [results] = await pool.query(query);
     res.json(results);
   } catch (error) {
@@ -520,7 +520,7 @@ app.get('/api/employees', async (req, res) => {
 app.get('/api/employees/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const query = `
       SELECT 
         id as employee_id, 
@@ -538,13 +538,13 @@ app.get('/api/employees/:id', async (req, res) => {
       FROM employees
       WHERE id = ?
     `;
-    
+
     const [results] = await pool.query(query, [id]);
-    
+
     if (results.length === 0) {
       return res.status(404).json({ error: 'Employee not found' });
     }
-    
+
     res.json(results[0]);
   } catch (error) {
     console.error('Error in /api/employees/:id:', error);
@@ -556,12 +556,12 @@ app.get('/api/employees/:id', async (req, res) => {
 app.post('/api/employees', async (req, res) => {
   try {
     const { id, name, position, office, registered, noter, regular, signatory, am_in, am_out, pm_in, pm_out } = req.body;
-    
+
     const query = `
       INSERT INTO employees (id, name, position, office, registered, noter, regular, signatory, am_in, am_out, pm_in, pm_out)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    
+
     await pool.query(query, [id, name, position, office, registered, noter, regular, signatory, am_in, am_out, pm_in, pm_out]);
     res.json({ message: 'Employee added successfully' });
   } catch (error) {
@@ -575,14 +575,14 @@ app.put('/api/employees/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, position, office, registered, noter, regular, signatory, am_in, am_out, pm_in, pm_out } = req.body;
-    
+
     const query = `
       UPDATE employees 
       SET name = ?, position = ?, office = ?, registered = ?, noter = ?, regular = ?, 
           signatory = ?, am_in = ?, am_out = ?, pm_in = ?, pm_out = ?
       WHERE id = ?
     `;
-    
+
     await pool.query(query, [name, position, office, registered, noter, regular, signatory, am_in, am_out, pm_in, pm_out, id]);
     res.json({ message: 'Employee updated successfully' });
   } catch (error) {
@@ -607,13 +607,13 @@ app.delete('/api/employees/:id', async (req, res) => {
 app.post('/api/employees/bulk-schedule', async (req, res) => {
   try {
     const { employeeIds, schedule } = req.body;
-    
+
     if (!employeeIds || !employeeIds.length) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    
+
     const { am_in, am_out, pm_in, pm_out } = schedule;
-    
+
     // Convert array of IDs to comma-separated string for IN clause, securely parameterized
     if (employeeIds.length > 0) {
       const placeholders = employeeIds.map(() => '?').join(',');
@@ -622,18 +622,18 @@ app.post('/api/employees/bulk-schedule', async (req, res) => {
         SET am_in = ?, am_out = ?, pm_in = ?, pm_out = ?
         WHERE id IN (${placeholders})
       `;
-      
+
       const queryParams = [
-        am_in || null, 
-        am_out || null, 
-        pm_in || null, 
-        pm_out || null, 
+        am_in || null,
+        am_out || null,
+        pm_in || null,
+        pm_out || null,
         ...employeeIds
       ];
-      
+
       await pool.query(updateQuery, queryParams);
     }
-    
+
     res.json({ message: 'Default schedule applied successfully' });
   } catch (error) {
     console.error('Error in POST /api/employees/bulk-schedule:', error);
@@ -645,15 +645,15 @@ app.post('/api/employees/bulk-schedule', async (req, res) => {
 app.post('/api/employees/bulk-schedule-overrides', async (req, res) => {
   try {
     const { employeeIds, startDate, endDate, schedule, skipWeekends } = req.body;
-    
+
     if (!employeeIds || !employeeIds.length || !startDate || !endDate) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    
+
     const start = new Date(startDate);
     const end = new Date(endDate);
     const dates = [];
-    
+
     for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
       const day = dt.getDay();
       if (skipWeekends && (day === 0 || day === 6)) {
@@ -661,18 +661,18 @@ app.post('/api/employees/bulk-schedule-overrides', async (req, res) => {
       }
       dates.push(new Date(dt).toISOString().split('T')[0]);
     }
-    
+
     if (dates.length === 0) {
       return res.status(400).json({ error: 'No dates selected or all dates skipped' });
     }
-    
+
     const { am_in, am_out, pm_in, pm_out } = schedule;
-    
+
     for (const empId of employeeIds) {
       for (const date of dates) {
         const checkQuery = 'SELECT id FROM employee_schedules WHERE employee_id = ? AND date = ?';
         const [existing] = await pool.query(checkQuery, [empId, date]);
-        
+
         if (existing.length > 0) {
           const updateQuery = `
             UPDATE employee_schedules 
@@ -693,7 +693,7 @@ app.post('/api/employees/bulk-schedule-overrides', async (req, res) => {
         }
       }
     }
-    
+
     res.json({ message: 'Schedule override applied successfully' });
   } catch (error) {
     console.error('Error in POST /api/employees/bulk-schedule-overrides:', error);
@@ -739,11 +739,11 @@ app.delete('/api/employees/overrides/:id', async (req, res) => {
 app.get('/api/employees/:id/overrides-grouped', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // 1. Get default schedule from employee
     const [empRows] = await pool.query('SELECT am_in, am_out, pm_in, pm_out FROM employees WHERE id = ?', [id]);
     if (empRows.length === 0) return res.status(404).json({ error: 'Employee not found' });
-    
+
     const def = empRows[0];
     const defSchedStr = `${def.am_in}-${def.am_out}-${def.pm_in}-${def.pm_out}`;
 
@@ -771,8 +771,8 @@ app.get('/api/employees/:id/overrides-grouped', async (req, res) => {
         isDefault: false
       };
 
-      const isSameSchedule = (s1, s2) => 
-        s1.am_in === s2.am_in && s1.am_out === s2.am_out && 
+      const isSameSchedule = (s1, s2) =>
+        s1.am_in === s2.am_in && s1.am_out === s2.am_out &&
         s1.pm_in === s2.pm_in && s1.pm_out === s2.pm_out;
 
       const isNextDay = (d1, d2) => {
@@ -816,7 +816,7 @@ app.get('/api/employees/:id/overrides-grouped', async (req, res) => {
 app.get('/api/noters', async (req, res) => {
   try {
     console.log('🔄 Fetching noters from all three tables...');
-    
+
     const query = `
       -- Get officials (Mayor, etc.)
       SELECT 
@@ -855,16 +855,16 @@ app.get('/api/noters', async (req, res) => {
       
       ORDER BY name ASC
     `;
-    
+
     const [results] = await pool.query(query);
     console.log(`✅ Found ${results.length} noters from all sources`);
-    
+
     res.json(results);
   } catch (error) {
     console.error('❌ Error in /api/noters:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to fetch department heads',
-      details: error.message 
+      details: error.message
     });
   }
 });
@@ -904,7 +904,7 @@ app.get('/api/biometrics', async (req, res) => {
       FROM biometrics
       ORDER BY id
     `;
-    
+
     const [results] = await pool.query(query);
     res.json(results);
   } catch (error) {
@@ -930,21 +930,21 @@ function calculateTardiness(record, employeeSchedule, shiftType) {
 
     if (isNightShift) {
       const difference = actualMinutes - scheduledMinutes;
-      
+
       if (difference <= 0) {
         return 0;
       }
-      
+
       return difference;
-      
+
     } else {
       // REGULAR SHIFT (morning/mid)
       const lateness = actualMinutes - scheduledMinutes;
-      
+
       if (lateness <= 0) {
         return 0;
       }
-      
+
       return lateness;
     }
   }
@@ -954,22 +954,22 @@ function calculateTardiness(record, employeeSchedule, shiftType) {
       // MORNING SHIFT: Calculate tardiness for BOTH AM IN and PM IN
       const amTardiness = calculateSingleTardiness(employeeSchedule.am_in, record.am_in, false);
       const pmTardiness = calculateSingleTardiness(employeeSchedule.pm_in, record.pm_in, false);
-      
+
       // Total tardiness = AM tardiness + PM tardiness
       tardinessMinutes = amTardiness + pmTardiness;
       break;
-    
+
     case 'night':
       // NIGHT SHIFT: Use AM_IN (22:00) as scheduled time, compare with PM_IN (actual clock-in)
       const nightShiftScheduledTime = employeeSchedule.am_in || "22:00:00";
       tardinessMinutes += calculateSingleTardiness(nightShiftScheduledTime, record.pm_in, true);
       break;
-    
+
     case 'mid':
       // MID SHIFT: Only check AM IN (since they work straight through)
       tardinessMinutes += calculateSingleTardiness(employeeSchedule.am_in, record.am_in, false);
       break;
-    
+
     default:
       return null;
   }
@@ -981,12 +981,12 @@ function calculateTardiness(record, employeeSchedule, shiftType) {
 // Helper function to convert time string to minutes
 function timeToMinutes(timeStr) {
   if (!timeStr) return 0;
-  
+
   // Handle both "HH:MM" and "HH:MM:SS" formats
   const parts = timeStr.split(':');
   const hours = parseInt(parts[0]) || 0;
   const minutes = parseInt(parts[1]) || 0;
-  
+
   return hours * 60 + minutes;
 }
 
@@ -995,9 +995,9 @@ app.get('/api/dtr/:employeeId', async (req, res) => {
   try {
     const { employeeId } = req.params;
     const { startDate, endDate } = req.query;
-    
+
     const connection = await pool.getConnection();
-    
+
     try {
       // Get employee schedule first
       const [employeeRows] = await connection.query(`
@@ -1054,9 +1054,9 @@ app.get('/api/dtr/:employeeId', async (req, res) => {
           AND date BETWEEN ? AND ?
         ORDER BY date DESC
       `;
-      
+
       const [results] = await connection.query(query, [employeeId, startDate, endDate]);
-      
+
       // Calculate tardiness for each record using default schedule or override
       const formattedResults = results.map(record => {
         const dt = new Date(record.date);
@@ -1065,12 +1065,12 @@ app.get('/api/dtr/:employeeId', async (req, res) => {
           String(dt.getMonth() + 1).padStart(2, '0'),
           String(dt.getDate()).padStart(2, '0')
         ].join('-');
-        
+
         const activeSchedule = overridesByDate[recordDateStr] || employeeSchedule;
         const activeShiftType = overridesByDate[recordDateStr] ? detectShiftTypeFromSchedule(activeSchedule) : defaultShiftType;
-        
+
         const tardinessMinutes = calculateTardiness(record, activeSchedule, activeShiftType);
-        
+
         return {
           ...record,
           am_in: formatTimeForDisplay(record.am_in),
@@ -1081,7 +1081,7 @@ app.get('/api/dtr/:employeeId', async (req, res) => {
           is_override: !!overridesByDate[recordDateStr]
         };
       });
-      
+
       res.json(formattedResults);
     } finally {
       connection.release();
@@ -1095,7 +1095,7 @@ app.get('/api/dtr/:employeeId', async (req, res) => {
 // Improved helper function to detect shift type from schedule
 function detectShiftTypeFromSchedule(schedule) {
   if (!schedule || (!schedule.am_in && !schedule.pm_in)) return 'morning';
-  
+
   // Check AM_IN hour for night shift detection
   if (schedule.am_in) {
     const amInHour = parseInt(schedule.am_in.split(':')[0]);
@@ -1104,7 +1104,7 @@ function detectShiftTypeFromSchedule(schedule) {
       return 'night';
     }
   }
-  
+
   // If employee has PM_IN scheduled but no AM_IN, check PM_IN
   if (schedule.pm_in && (!schedule.am_in || schedule.am_in === '00:00:00')) {
     const pmInHour = parseInt(schedule.pm_in.split(':')[0]);
@@ -1113,7 +1113,7 @@ function detectShiftTypeFromSchedule(schedule) {
       return 'night';
     }
   }
-  
+
   // Mid shift: starts around 6AM-8AM, works straight through (no lunch break)
   if (schedule.am_in && (!schedule.pm_in || schedule.pm_in === '00:00:00')) {
     const amInHour = parseInt(schedule.am_in.split(':')[0]);
@@ -1121,12 +1121,12 @@ function detectShiftTypeFromSchedule(schedule) {
       return 'mid';
     }
   }
-  
+
   // Morning shift: has both AM and PM schedules (with lunch break)
   if (schedule.am_in && schedule.pm_in && schedule.pm_in !== '00:00:00') {
     return 'morning';
   }
-  
+
   // Default to morning shift
   return 'morning';
 }
@@ -1149,7 +1149,7 @@ app.put('/api/dtr/:id', async (req, res) => {
       SET date = ?, am_in = ?, am_out = ?, pm_in = ?, pm_out = ?, locked = ?
       WHERE id = ?
     `;
-    
+
     await pool.query(query, [date, amInValue, amOutValue, pmInValue, pmOutValue, locked ? 1 : 0, id]);
     res.json({ message: 'DTR record updated successfully' });
   } catch (error) {
@@ -1201,8 +1201,8 @@ app.post('/api/export-dtr', async (req, res) => {
 
     // Validate required fields
     if (!employee_id || !finalNoterSignatory || !finalNoterPosition || !first_month || !first_year) {
-      return res.status(400).json({ 
-        message: 'Missing required fields: employee_id, noter_signatory, noter_position, first_month, first_year' 
+      return res.status(400).json({
+        message: 'Missing required fields: employee_id, noter_signatory, noter_position, first_month, first_year'
       });
     }
 
@@ -1244,16 +1244,16 @@ app.post('/api/export-dtr', async (req, res) => {
     pythonProcess.on('close', (code) => {
       if (code !== 0) {
         console.error('Python script failed with code:', code);
-        return res.status(500).json({ 
-          message: 'Export failed', 
+        return res.status(500).json({
+          message: 'Export failed',
           error: errorOutput || 'Unknown error occurred during export'
         });
       }
 
       if (output.includes('ERROR:')) {
         const errorMatch = output.match(/ERROR: (.*)/);
-        return res.status(500).json({ 
-          message: 'Export failed', 
+        return res.status(500).json({
+          message: 'Export failed',
           error: errorMatch ? errorMatch[1] : 'Unknown error'
         });
       }
@@ -1280,9 +1280,9 @@ app.post('/api/export-dtr', async (req, res) => {
 
   } catch (error) {
     console.error('Error in /api/export-dtr:', error);
-    res.status(500).json({ 
-      message: 'Export failed', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Export failed',
+      error: error.message
     });
   }
 });
@@ -1324,8 +1324,8 @@ app.post('/api/dtr/generate-print-pdf', async (req, res) => {
 
     // Validate required fields
     if (!employee_id || !finalNoterSignatory || !finalNoterPosition || !first_month || !first_year) {
-      return res.status(400).json({ 
-        message: 'Missing required fields for printing' 
+      return res.status(400).json({
+        message: 'Missing required fields for printing'
       });
     }
 
@@ -1336,7 +1336,7 @@ app.post('/api/dtr/generate-print-pdf', async (req, res) => {
         const files = fs.readdirSync(previewsDir);
         const now = Date.now();
         const oneHourAgo = now - (60 * 60 * 1000); // 1 hour ago
-        
+
         files.forEach(file => {
           if (file.endsWith('.pdf')) {
             const filePath = path.join(previewsDir, file);
@@ -1390,28 +1390,28 @@ app.post('/api/dtr/generate-print-pdf', async (req, res) => {
     pythonProcess.on('close', (code) => {
       if (code !== 0) {
         console.error('Python script failed with code:', code);
-        return res.status(500).json({ 
-          message: 'Failed to generate PDF for printing', 
+        return res.status(500).json({
+          message: 'Failed to generate PDF for printing',
           error: errorOutput || 'Unknown error occurred during PDF generation'
         });
       }
 
       if (output.includes('ERROR:')) {
         const errorMatch = output.match(/ERROR: (.*)/);
-        return res.status(500).json({ 
-          message: 'Failed to generate PDF for printing', 
+        return res.status(500).json({
+          message: 'Failed to generate PDF for printing',
           error: errorMatch ? errorMatch[1] : 'Unknown error'
         });
       }
 
       // Extract PDF filename from output
-      const filenameMatch = output.match(/exports[\\\/]previews[\\\/]([^\\\/\n]+\.pdf)/) || 
-                           output.match(/previews[\\\/]([^\\\/\n]+\.pdf)/);
-      
+      const filenameMatch = output.match(/exports[\\\/]previews[\\\/]([^\\\/\n]+\.pdf)/) ||
+        output.match(/previews[\\\/]([^\\\/\n]+\.pdf)/);
+
       if (filenameMatch) {
         const filename = filenameMatch[1];
         console.log('PDF generated for printing:', filename);
-        
+
         res.json({
           success: true,
           filename: filename,
@@ -1419,7 +1419,7 @@ app.post('/api/dtr/generate-print-pdf', async (req, res) => {
         });
       } else {
         console.error('Could not extract PDF filename from Python output. Full output:', output);
-        res.status(500).json({ 
+        res.status(500).json({
           message: 'Failed to generate PDF for printing - file not found in output',
           output: output
         });
@@ -1428,9 +1428,9 @@ app.post('/api/dtr/generate-print-pdf', async (req, res) => {
 
   } catch (error) {
     console.error('Error in /api/dtr/generate-print-pdf:', error);
-    res.status(500).json({ 
-      message: 'PDF generation failed', 
-      error: error.message 
+    res.status(500).json({
+      message: 'PDF generation failed',
+      error: error.message
     });
   }
 });
@@ -1439,12 +1439,12 @@ app.post('/api/cleanup-preview-files', (req, res) => {
   try {
     const previewsDir = path.join(__dirname, 'exports', 'previews');
     let deletedCount = 0;
-    
+
     if (fs.existsSync(previewsDir)) {
       const files = fs.readdirSync(previewsDir);
       const now = Date.now();
       const maxAge = 30 * 60 * 1000; // 30 minutes max age
-      
+
       files.forEach(file => {
         const filePath = path.join(previewsDir, file);
         try {
@@ -1459,17 +1459,17 @@ app.post('/api/cleanup-preview-files', (req, res) => {
         }
       });
     }
-    
+
     res.json({
       message: `Cleanup completed. Deleted ${deletedCount} old files.`,
       deletedCount: deletedCount
     });
-    
+
   } catch (error) {
     console.error('Error in cleanup:', error);
-    res.status(500).json({ 
-      message: 'Cleanup failed', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Cleanup failed',
+      error: error.message
     });
   }
 });
@@ -1477,15 +1477,15 @@ app.post('/api/cleanup-preview-files', (req, res) => {
 app.get('/api/dtr/pdf-preview/:filename', (req, res) => {
   try {
     const { filename } = req.params;
-    
+
     // Use the export path from config (same as Python uses)
     const currentConfig = loadConfig();
     const exportPath = currentConfig.export?.path || 'exports';
-    
+
     // Check if exportPath is absolute or relative
     let filePath;
     let previewsDir;
-    
+
     if (path.isAbsolute(exportPath)) {
       // Absolute path like "C:\Users\admin\Documents\DTR EXPORTS PATH"
       previewsDir = path.join(exportPath, 'previews');
@@ -1495,20 +1495,20 @@ app.get('/api/dtr/pdf-preview/:filename', (req, res) => {
       previewsDir = path.join(__dirname, exportPath, 'previews');
       filePath = path.join(previewsDir, filename);
     }
-    
+
     // Ensure .pdf extension is added if not present
     if (!filePath.endsWith('.pdf')) {
       filePath = filePath + '.pdf';
     }
-    
+
     console.log('🔍 Looking for PDF at:', filePath);
     console.log('📁 Export path from config:', exportPath);
     console.log('📄 Filename:', filename);
     console.log('📂 Previews directory:', previewsDir);
-    
+
     if (!fs.existsSync(filePath)) {
       console.error('❌ PDF file not found at:', filePath);
-      
+
       // Also check what files ARE in the previews folder
       if (fs.existsSync(previewsDir)) {
         const files = fs.readdirSync(previewsDir);
@@ -1523,7 +1523,7 @@ app.get('/api/dtr/pdf-preview/:filename', (req, res) => {
           console.error('   Failed to create previews folder:', err.message);
         }
       }
-      
+
       return res.status(404).json({ message: 'PDF file not found', path: filePath });
     }
 
@@ -1532,10 +1532,10 @@ app.get('/api/dtr/pdf-preview/:filename', (req, res) => {
     // Set headers for PDF file
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-    
+
     // Read the file and send it
     const fileStream = fs.createReadStream(filePath);
-    
+
     fileStream.on('error', (err) => {
       console.error('Error reading PDF file:', err);
       if (!res.headersSent) {
@@ -1545,7 +1545,7 @@ app.get('/api/dtr/pdf-preview/:filename', (req, res) => {
 
     fileStream.on('end', () => {
       console.log('✅ PDF file sent to browser successfully');
-      
+
       // Delete the file 60 seconds after sending
       setTimeout(() => {
         if (fs.existsSync(filePath)) {
@@ -1561,7 +1561,7 @@ app.get('/api/dtr/pdf-preview/:filename', (req, res) => {
     });
 
     fileStream.pipe(res);
-    
+
   } catch (error) {
     console.error('Error serving PDF file:', error);
     res.status(500).json({ message: 'Failed to serve PDF file' });
@@ -1572,10 +1572,10 @@ app.get('/api/dtr/pdf-preview/:filename', (req, res) => {
 app.get('/api/dtr/excel-preview/:filename', (req, res) => {
   try {
     const { filename } = req.params;
-    
+
     const currentConfig = loadConfig();
     const exportPath = currentConfig.export?.path || 'exports';
-    
+
     // Check if exportPath is absolute or relative
     let filePath;
     if (path.isAbsolute(exportPath)) {
@@ -1583,9 +1583,9 @@ app.get('/api/dtr/excel-preview/:filename', (req, res) => {
     } else {
       filePath = path.join(__dirname, exportPath, 'previews', filename);
     }
-    
+
     console.log('🔍 Looking for Excel at:', filePath);
-    
+
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: 'Preview file not found' });
     }
@@ -1593,10 +1593,10 @@ app.get('/api/dtr/excel-preview/:filename', (req, res) => {
     // Set headers for Excel file
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-    
+
     // Send the file (Excel files are kept, not deleted)
     res.sendFile(filePath);
-    
+
   } catch (error) {
     console.error('Error serving Excel file:', error);
     res.status(500).json({ message: 'Failed to serve Excel file' });
@@ -1622,8 +1622,8 @@ app.post('/api/dtr/generate-excel-preview', async (req, res) => {
 
     // Validate required fields
     if (!employee_id || !noter_signatory || !noter_position || !first_month || !first_year) {
-      return res.status(400).json({ 
-        message: 'Missing required fields for preview' 
+      return res.status(400).json({
+        message: 'Missing required fields for preview'
       });
     }
 
@@ -1665,8 +1665,8 @@ app.post('/api/dtr/generate-excel-preview', async (req, res) => {
     pythonProcess.on('close', (code) => {
       if (code !== 0) {
         console.error('Python script failed with code:', code);
-        return res.status(500).json({ 
-          message: 'Failed to generate Excel preview', 
+        return res.status(500).json({
+          message: 'Failed to generate Excel preview',
           error: errorOutput || 'Unknown error occurred'
         });
       }
@@ -1674,20 +1674,20 @@ app.post('/api/dtr/generate-excel-preview', async (req, res) => {
       // Check if there's an ERROR in the output
       if (output.includes('ERROR:')) {
         const errorMatch = output.match(/ERROR: (.*)/);
-        return res.status(500).json({ 
-          message: 'Failed to generate Excel preview', 
+        return res.status(500).json({
+          message: 'Failed to generate Excel preview',
           error: errorMatch ? errorMatch[1] : 'Unknown error in Python script'
         });
       }
 
       // Extract filename from Python output - look for the file path
-      const filenameMatch = output.match(/exports[\\\/]previews[\\\/]([^\\\/\n]+\.xlsx)/) || 
-                           output.match(/previews[\\\/]([^\\\/\n]+\.xlsx)/);
-      
+      const filenameMatch = output.match(/exports[\\\/]previews[\\\/]([^\\\/\n]+\.xlsx)/) ||
+        output.match(/previews[\\\/]([^\\\/\n]+\.xlsx)/);
+
       if (filenameMatch) {
         const filename = filenameMatch[1];
         console.log('Excel preview generated:', filename);
-        
+
         res.json({
           success: true,
           filename: filename,
@@ -1695,7 +1695,7 @@ app.post('/api/dtr/generate-excel-preview', async (req, res) => {
         });
       } else {
         console.error('Could not extract filename from Python output. Full output:', output);
-        res.status(500).json({ 
+        res.status(500).json({
           message: 'Failed to generate Excel preview - file not found in output',
           output: output
         });
@@ -1704,9 +1704,9 @@ app.post('/api/dtr/generate-excel-preview', async (req, res) => {
 
   } catch (error) {
     console.error('Error in /api/dtr/generate-excel-preview:', error);
-    res.status(500).json({ 
-      message: 'Excel preview generation failed', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Excel preview generation failed',
+      error: error.message
     });
   }
 });
@@ -1740,8 +1740,8 @@ app.post('/api/dtr/preview', async (req, res) => {
     });
 
     if (!employee_id || !noter_signatory || !noter_position || !first_month || !first_year) {
-      return res.status(400).json({ 
-        message: 'Missing required fields for preview' 
+      return res.status(400).json({
+        message: 'Missing required fields for preview'
       });
     }
 
@@ -1838,9 +1838,9 @@ app.post('/api/dtr/preview', async (req, res) => {
 
   } catch (error) {
     console.error('Error in /api/dtr/preview:', error);
-    res.status(500).json({ 
-      message: 'Preview failed', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Preview failed',
+      error: error.message
     });
   } finally {
     if (connection) {
@@ -1852,10 +1852,10 @@ app.post('/api/dtr/preview', async (req, res) => {
 // Add this helper function at the top of index.js after the imports
 function formatTimeForDisplay(time) {
   if (!time) return null;
-  
+
   // Check if it's a "00:00:00" or "00:00" (which means blank)
   if (time === '00:00:00' || time === '00:00') return null;
-  
+
   if (typeof time === 'string') {
     // Remove seconds if present (HH:MM:SS -> HH:MM)
     const parts = time.split(':');
@@ -1864,7 +1864,7 @@ function formatTimeForDisplay(time) {
     }
     return time;
   }
-  
+
   const timeStr = time.toString();
   if (timeStr.includes(':')) {
     const parts = timeStr.split(':');
@@ -1873,7 +1873,7 @@ function formatTimeForDisplay(time) {
     }
     return timeStr;
   }
-  
+
   return timeStr;
 }
 
@@ -1883,7 +1883,7 @@ function formatTimeForDisplay(time) {
 async function fetchBiometricAttendance(biometricId, startDate, endDate) {
   return new Promise((resolve, reject) => {
     console.log(`Calling Python script for biometric ${biometricId}`);
-    
+
     const pythonProcess = spawn('python', [
       'fetch_biometric.py',
       biometricId.toString(),
@@ -1908,7 +1908,7 @@ async function fetchBiometricAttendance(biometricId, startDate, endDate) {
         reject(new Error(`Python script failed: ${errorString}`));
         return;
       }
-      
+
       try {
         const attendances = JSON.parse(dataString);
         console.log(`Python returned ${attendances.length} attendance records`);
@@ -1936,9 +1936,9 @@ function isTimestampInRange(timestampStr, startDate, endDate) {
   if (!timestampStr || typeof timestampStr !== 'string') {
     return false;
   }
-  
+
   const dateStr = timestampStr.split(' ')[0];
-  
+
   if (startDate && endDate) {
     return dateStr >= startDate && dateStr <= endDate;
   } else if (startDate && !endDate) {
@@ -2023,7 +2023,7 @@ app.post('/import-dtr', async (req, res) => {
 
       // FIXED: Truncate to minute level (removes seconds) - matches Python's deduplication
       const created_at = parseTimestampToMinute(timestampStr);
-      
+
       console.log(`Processing: Employee ${employeeId} at ${created_at}`);
 
       dtrs.push({
@@ -2119,22 +2119,22 @@ async function processDTRRecord(employee_id, datetime, start, end, dtrs) {
 function formatDateTimeForMySQL(dateStr, timeStr) {
   // Parse date: MM/DD/YYYY
   const [month, day, year] = dateStr.split('/');
-  
+
   // Parse time: HH:MM:SS
   const [hours, minutes, seconds] = timeStr.split(':');
-  
+
   // Format directly as MySQL datetime WITHOUT timezone conversion
   const mysqlDateTime = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')} ${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}:${seconds.padStart(2, '0')}`;
-  
+
   return mysqlDateTime;
 }
 
 // Helper function for date range checking (without Date object timezone issues)
 function isDateInRange(dateStr, startDate, endDate) {
   if (!dateStr) return false;
-  
+
   let isoDate;
-  
+
   // Check if date is in MM/DD/YYYY format
   if (dateStr.includes('/')) {
     const parts = dateStr.split('/');
@@ -2151,7 +2151,7 @@ function isDateInRange(dateStr, startDate, endDate) {
   else {
     return false;
   }
-  
+
   if (startDate && endDate) {
     return isoDate >= startDate && isoDate <= endDate;
   } else if (startDate && !endDate) {
@@ -2184,14 +2184,14 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
     // ADD .dat file processing
     if (fileExtension === 'dat') {
       console.log('📄 Processing .dat file...');
-      
+
       try {
         const datRecords = await convertDatFile(file.path);
-        
+
         for (const record of datRecords) {
           // Extract date from created_at for range checking (already in YYYY-MM-DD format)
           const recordDate = record.created_at.split(' ')[0]; // YYYY-MM-DD format
-          
+
           // Check date range - recordDate is already in YYYY-MM-DD format
           if (start_date && end_date) {
             if (recordDate < start_date || recordDate > end_date) {
@@ -2206,13 +2206,13 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
               continue;
             }
           }
-          
+
           dtrs.push({
             employee_id: record.employee_id.toString(),
             created_at: record.created_at
           });
         }
-        
+
         console.log(`✅ Processed ${dtrs.length} records from .dat file (after date filtering)`);
       } catch (datError) {
         throw new Error(`Failed to process .dat file: ${datError.message}`);
@@ -2222,7 +2222,7 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
     else if (fileExtension === 'txt') {
       const content = fs.readFileSync(file.path, 'utf8');
       const rows = content.split('\n');
-      
+
       if (rows.length === 0) {
         throw new Error('File is empty');
       }
@@ -2231,7 +2231,7 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
 
       for (const row of rows) {
         if (!row.trim()) continue;
-        
+
         const parts = row.trim().split(/\s+/);
         if (parts.length < 7) continue;
 
@@ -2245,12 +2245,12 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
           }
 
           const created_at = formatDateTimeForMySQL(date, time);
-          
+
           dtrs.push({
             employee_id: employee_id.toString(),
             created_at: created_at
           });
-          
+
         } catch (parseError) {
           console.warn(`Error parsing row:`, parseError);
           continue;
@@ -2277,17 +2277,17 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
 
         try {
           let created_at;
-          
+
           if (typeof excelDate === 'number') {
             const jsDate = new Date((excelDate - 25569) * 86400 * 1000);
             const year = jsDate.getUTCFullYear();
             const month = String(jsDate.getUTCMonth() + 1).padStart(2, '0');
             const day = String(jsDate.getUTCDate()).padStart(2, '0');
-            
+
             const [hours, minutes, seconds] = time.split(':').map(Number);
-            
+
             created_at = `${year}-${month}-${day} ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds || 0).padStart(2, '0')}`;
-            
+
             const dateStr = `${year}-${month}-${day}`;
             if (start_date && end_date && !(dateStr >= start_date && dateStr <= end_date)) continue;
             if (start_date && !end_date && !(dateStr >= start_date)) continue;
@@ -2295,7 +2295,7 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
           } else {
             const [datePart, timePart] = excelDate.split(' ');
             created_at = `${datePart} ${time}`;
-            
+
             if (start_date && end_date && !(datePart >= start_date && datePart <= end_date)) continue;
             if (start_date && !end_date && !(datePart >= start_date)) continue;
             if (!start_date && end_date && !(datePart <= end_date)) continue;
@@ -2305,7 +2305,7 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
             employee_id: employee_id.toString(),
             created_at: created_at
           });
-          
+
         } catch (parseError) {
           console.warn(`Error parsing Excel row:`, parseError);
           continue;
@@ -2374,7 +2374,7 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
 app.post('/refresh-dtr', async (req, res) => {
   try {
     console.log('Starting DTR refresh via Python (direct)...');
-    
+
     const pythonProcess = spawn('python', ['refresh_dtr_direct.py']);
 
     let output = '';
@@ -2392,12 +2392,12 @@ app.post('/refresh-dtr', async (req, res) => {
 
     pythonProcess.on('close', (code) => {
       console.log(`Python process exited with code: ${code}`);
-      
+
       if (code !== 0) {
         console.error('Python script failed with code:', code);
         console.error('Python stderr output:', errorOutput);
-        return res.status(500).json({ 
-          message: 'Failed to refresh DTR', 
+        return res.status(500).json({
+          message: 'Failed to refresh DTR',
           error: errorOutput || `Python script exited with code ${code}`,
           output: output
         });
@@ -2413,13 +2413,13 @@ app.post('/refresh-dtr', async (req, res) => {
             break;
           }
         }
-        
+
         if (!jsonLine) {
           jsonLine = output.trim();
         }
-        
+
         const result = JSON.parse(jsonLine);
-        
+
         if (result.success) {
           res.json({
             message: result.message,
@@ -2435,8 +2435,8 @@ app.post('/refresh-dtr', async (req, res) => {
       } catch (parseError) {
         console.error('Error parsing Python output:', parseError);
         console.error('Raw Python output:', output);
-        res.status(500).json({ 
-          message: 'Error processing refresh result', 
+        res.status(500).json({
+          message: 'Error processing refresh result',
           error: parseError.message,
           raw_output: output,
           stderr: errorOutput
@@ -2454,11 +2454,11 @@ app.post('/refresh-dtr', async (req, res) => {
 app.post('/refresh-dtr/:employeeId', async (req, res) => {
   try {
     const { employeeId } = req.params;
-    
+
     console.log(`Starting DTR refresh for employee ${employeeId} via Python (direct)...`);
-    
+
     const pythonProcess = spawn('python', ['refresh_dtr_direct.py', employeeId]);
-    
+
     let output = '';
     let errorOutput = '';
 
@@ -2474,12 +2474,12 @@ app.post('/refresh-dtr/:employeeId', async (req, res) => {
 
     pythonProcess.on('close', (code) => {
       console.log(`Python process exited with code: ${code}`);
-      
+
       if (code !== 0) {
         console.error('Python script failed with code:', code);
         console.error('Python stderr output:', errorOutput);
-        return res.status(500).json({ 
-          message: 'Failed to refresh DTR', 
+        return res.status(500).json({
+          message: 'Failed to refresh DTR',
           error: errorOutput || `Python script exited with code ${code}`,
           output: output
         });
@@ -2495,13 +2495,13 @@ app.post('/refresh-dtr/:employeeId', async (req, res) => {
             break;
           }
         }
-        
+
         if (!jsonLine) {
           jsonLine = output.trim();
         }
-        
+
         const result = JSON.parse(jsonLine);
-        
+
         if (result.success) {
           res.json({
             message: result.message,
@@ -2519,8 +2519,8 @@ app.post('/refresh-dtr/:employeeId', async (req, res) => {
       } catch (parseError) {
         console.error('Error parsing Python output:', parseError);
         console.error('Raw Python output:', output);
-        res.status(500).json({ 
-          message: 'Error processing refresh result', 
+        res.status(500).json({
+          message: 'Error processing refresh result',
           error: parseError.message,
           raw_output: output,
           stderr: errorOutput
@@ -2547,7 +2547,7 @@ app.get('/api/officials/positions', async (req, res) => {
       "Department Head",
       "Assistant Department Head",
     ];
-    
+
     res.json(positions);
   } catch (error) {
     console.error('Error in /api/officials/positions:', error);
@@ -2560,36 +2560,36 @@ app.post('/api/officials', async (req, res) => {
   let connection;
   try {
     const { name, position, signatory } = req.body;
-    
+
     console.log('Adding new official:', { name, position, signatory });
 
     // Validate required fields
     if (!name || !position || !signatory) {
-      return res.status(400).json({ 
-        error: 'All fields are required: name, position, signatory' 
+      return res.status(400).json({
+        error: 'All fields are required: name, position, signatory'
       });
     }
 
     connection = await pool.getConnection();
-    
+
     const query = `
       INSERT INTO officials (name, position, signatory)
       VALUES (?, ?, ?)
     `;
-    
+
     const [result] = await connection.query(query, [name, position, signatory]);
-    
+
     console.log('Official added successfully with ID:', result.insertId);
-    
-    res.json({ 
+
+    res.json({
       message: 'Official added successfully',
       official_id: result.insertId
     });
   } catch (error) {
     console.error('Error in POST /api/officials:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to add official',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -2611,35 +2611,35 @@ app.put('/api/officials/:id', async (req, res) => {
 
     // Validate required fields
     if (!name || !position || !signatory) {
-      return res.status(400).json({ 
-        error: 'All fields are required: name, position, signatory' 
+      return res.status(400).json({
+        error: 'All fields are required: name, position, signatory'
       });
     }
 
     connection = await pool.getConnection();
-    
+
     const query = `
       UPDATE officials 
       SET name = ?, position = ?, signatory = ?
       WHERE id = ?
     `;
-    
+
     const [result] = await connection.query(query, [name, position, signatory, id]);
-    
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Official not found' });
     }
-    
+
     console.log('Official updated successfully with ID:', id);
-    
-    res.json({ 
+
+    res.json({
       message: 'Official updated successfully'
     });
   } catch (error) {
     console.error('Error in PUT /api/officials/:id:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to update official',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -2657,25 +2657,25 @@ app.delete('/api/officials/:id', async (req, res) => {
     console.log('Deleting official with ID:', id);
 
     connection = await pool.getConnection();
-    
+
     const query = `DELETE FROM officials WHERE id = ?`;
-    
+
     const [result] = await connection.query(query, [id]);
-    
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Official not found' });
     }
-    
+
     console.log('Official deleted successfully with ID:', id);
-    
-    res.json({ 
+
+    res.json({
       message: 'Official deleted successfully'
     });
   } catch (error) {
     console.error('Error in DELETE /api/officials/:id:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to delete official',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -2691,40 +2691,40 @@ app.put('/api/noters/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, position, office, signatory } = req.body;
-    
+
     console.log('Updating department head:', { id, name, position, office, signatory });
 
     // Validate required fields
     if (!name || !position || !office || !signatory) {
-      return res.status(400).json({ 
-        error: 'All fields are required: name, position, office, signatory' 
+      return res.status(400).json({
+        error: 'All fields are required: name, position, office, signatory'
       });
     }
 
     connection = await pool.getConnection();
-    
+
     const query = `
       UPDATE noters 
       SET name = ?, position = ?, office = ?, signatory = ?
       WHERE id = ?
     `;
-    
+
     const [result] = await connection.query(query, [name, position, office, signatory, id]);
-    
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Department head not found' });
     }
-    
+
     console.log('Department head updated successfully with ID:', id);
-    
-    res.json({ 
+
+    res.json({
       message: 'Department head updated successfully'
     });
   } catch (error) {
     console.error('Error in PUT /api/noters/:id:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to update department head',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -2742,25 +2742,25 @@ app.delete('/api/noters/:id', async (req, res) => {
     console.log('Deleting department head with ID:', id);
 
     connection = await pool.getConnection();
-    
+
     const query = `DELETE FROM noters WHERE id = ?`;
-    
+
     const [result] = await connection.query(query, [id]);
-    
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Department head not found' });
     }
-    
+
     console.log('Department head deleted successfully with ID:', id);
-    
-    res.json({ 
+
+    res.json({
       message: 'Department head deleted successfully'
     });
   } catch (error) {
     console.error('Error in DELETE /api/noters/:id:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to delete department head',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -2775,36 +2775,36 @@ app.post('/api/biometrics', async (req, res) => {
   let connection;
   try {
     const { name, ip_address, port, active } = req.body;
-    
+
     console.log('Adding new biometric device:', { name, ip_address, port, active });
 
     // Validate required fields
     if (!name || !ip_address || !port) {
-      return res.status(400).json({ 
-        error: 'All fields are required: name, ip_address, port' 
+      return res.status(400).json({
+        error: 'All fields are required: name, ip_address, port'
       });
     }
 
     connection = await pool.getConnection();
-    
+
     const query = `
       INSERT INTO biometrics (name, ip_address, port, active)
       VALUES (?, ?, ?, ?)
     `;
-    
+
     const [result] = await connection.query(query, [name, ip_address, port, active ? 1 : 0]);
-    
+
     console.log('Biometric device added successfully with ID:', result.insertId);
-    
-    res.json({ 
+
+    res.json({
       message: 'Biometric device added successfully',
       biometric_id: result.insertId
     });
   } catch (error) {
     console.error('Error in POST /api/biometrics:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to add biometric device',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -2824,35 +2824,35 @@ app.put('/api/biometrics/:id', async (req, res) => {
 
     // Validate required fields
     if (!name || !ip_address || !port) {
-      return res.status(400).json({ 
-        error: 'All fields are required: name, ip_address, port' 
+      return res.status(400).json({
+        error: 'All fields are required: name, ip_address, port'
       });
     }
 
     connection = await pool.getConnection();
-    
+
     const query = `
       UPDATE biometrics 
       SET name = ?, ip_address = ?, port = ?, active = ?
       WHERE id = ?
     `;
-    
+
     const [result] = await connection.query(query, [name, ip_address, port, active ? 1 : 0, id]);
-    
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Biometric device not found' });
     }
-    
+
     console.log('Biometric device updated successfully with ID:', id);
-    
-    res.json({ 
+
+    res.json({
       message: 'Biometric device updated successfully'
     });
   } catch (error) {
     console.error('Error in PUT /api/biometrics/:id:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to update biometric device',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -2870,25 +2870,25 @@ app.delete('/api/biometrics/:id', async (req, res) => {
     console.log('Deleting biometric device with ID:', id);
 
     connection = await pool.getConnection();
-    
+
     const query = `DELETE FROM biometrics WHERE id = ?`;
-    
+
     const [result] = await connection.query(query, [id]);
-    
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Biometric device not found' });
     }
-    
+
     console.log('Biometric device deleted successfully with ID:', id);
-    
-    res.json({ 
+
+    res.json({
       message: 'Biometric device deleted successfully'
     });
   } catch (error) {
     console.error('Error in DELETE /api/biometrics/:id:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to delete biometric device',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -2910,34 +2910,34 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Validate required fields
     if (!username || !password) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Username and password are required' 
+        error: 'Username and password are required'
       });
     }
 
     // Handle guest login (no database check)
     if (username === 'guest' && password === 'guest123') {
       console.log('✅ Guest login successful for:', username);
-      
+
       // Get session info
-      const sessionId = req.headers['x-session-id'] || 
-                       req.headers['authorization']?.split(' ')[1] || 
-                       `${req.ip}-${req.headers['user-agent']}`;
-      
+      const sessionId = req.headers['x-session-id'] ||
+        req.headers['authorization']?.split(' ')[1] ||
+        `${req.ip}-${req.headers['user-agent']}`;
+
       if (activeSessions.has(sessionId)) {
         const session = activeSessions.get(sessionId);
         session.username = 'guest';
         session.adminId = 999;
         session.level = 1;
         session.lastActivity = Date.now();
-        
+
         console.log(`\n🎯 [AUTH] Guest user logged in`);
         console.log(`   Session: ${sessionId.substring(0, 20)}...`);
         console.log(`   IP: ${session.ip}`);
         printActiveSessions();
       }
-      
+
       return res.json({
         success: true,
         message: 'Login successful',
@@ -2972,7 +2972,7 @@ app.post('/api/auth/login', async (req, res) => {
     // Verify password
     const bcrypt = require('bcrypt');
     const isPasswordValid = await bcrypt.compare(password, admin.password);
-    
+
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
@@ -2992,17 +2992,17 @@ app.post('/api/auth/login', async (req, res) => {
     console.log('✅ Login successful for:', admin.username);
 
     // Update session with username
-    const sessionId = req.headers['x-session-id'] || 
-                     req.headers['authorization']?.split(' ')[1] || 
-                     `${req.ip}-${req.headers['user-agent']}`;
-    
+    const sessionId = req.headers['x-session-id'] ||
+      req.headers['authorization']?.split(' ')[1] ||
+      `${req.ip}-${req.headers['user-agent']}`;
+
     if (activeSessions.has(sessionId)) {
       const session = activeSessions.get(sessionId);
       session.username = admin.username;
       session.adminId = admin.id;
       session.level = admin.level;
       session.lastActivity = Date.now();
-      
+
       console.log(`\n🎯 [AUTH] ${admin.username} (Level ${admin.level}) logged in`);
       console.log(`   Session: ${sessionId.substring(0, 20)}...`);
       console.log(`   IP: ${session.ip}`);
@@ -3017,9 +3017,9 @@ app.post('/api/auth/login', async (req, res) => {
 
   } catch (error) {
     console.error('Error in POST /api/auth/login:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Login failed due to server error' 
+      error: 'Login failed due to server error'
     });
   } finally {
     if (connection) {
@@ -3049,9 +3049,9 @@ app.get('/api/auth/verify', async (req, res) => {
     });
   } catch (error) {
     console.error('Error in GET /api/auth/verify:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Token verification failed' 
+      error: 'Token verification failed'
     });
   }
 });
@@ -3060,12 +3060,12 @@ app.get('/api/auth/verify', async (req, res) => {
 app.post('/api/auth/logout', async (req, res) => {
   try {
     // Get session info
-    const sessionId = req.headers['x-session-id'] || 
-                     req.headers['authorization']?.split(' ')[1] || 
-                     `${req.ip}-${req.headers['user-agent']}`;
-    
+    const sessionId = req.headers['x-session-id'] ||
+      req.headers['authorization']?.split(' ')[1] ||
+      `${req.ip}-${req.headers['user-agent']}`;
+
     let username = 'unknown';
-    
+
     if (activeSessions.has(sessionId)) {
       const session = activeSessions.get(sessionId);
       username = session.username || 'unknown';
@@ -3075,16 +3075,16 @@ app.post('/api/auth/logout', async (req, res) => {
       activeSessions.delete(sessionId);
       printActiveSessions();
     }
-    
+
     res.json({
       success: true,
       message: 'Logout successful'
     });
   } catch (error) {
     console.error('Error in POST /api/auth/logout:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Logout failed' 
+      error: 'Logout failed'
     });
   }
 });
@@ -3093,7 +3093,7 @@ app.post('/api/auth/logout', async (req, res) => {
 app.get('/api/check-unimported-dtrs/:employeeId', async (req, res) => {
   try {
     const { employeeId } = req.params;
-    
+
     const query = `
       SELECT COUNT(*) as unimported_count 
       FROM imports 
@@ -3104,10 +3104,10 @@ app.get('/api/check-unimported-dtrs/:employeeId', async (req, res) => {
         AND dtrs.date = DATE(imports.created_at)
       )
     `;
-    
+
     const [results] = await pool.query(query, [employeeId]);
     const hasUnimported = results[0].unimported_count > 0;
-    
+
     res.json({ hasUnimported, count: results[0].unimported_count });
   } catch (error) {
     console.error('Error checking unimported DTRs:', error);
@@ -3150,8 +3150,8 @@ app.post('/api/dtr/mass-generate-print-pdf', async (req, res) => {
     // Validate required fields
     if (!office || !noter_signatory || !noter_position || !first_month || !first_year) {
       console.log('ERROR: Missing required fields');
-      return res.status(400).json({ 
-        message: 'Missing required fields for mass PDF generation' 
+      return res.status(400).json({
+        message: 'Missing required fields for mass PDF generation'
       });
     }
 
@@ -3163,15 +3163,15 @@ app.post('/api/dtr/mass-generate-print-pdf', async (req, res) => {
       FROM employees 
       WHERE office = ? AND registered = 1
     `;
-    
+
     const queryParams = [office];
-    
+
     if (employeeType === 'regular') {
       employeeQuery += ' AND regular = 1';
     } else if (employeeType === 'jobOrder') {
       employeeQuery += ' AND regular = 0';
     }
-    
+
     employeeQuery += ' ORDER BY name';
 
     const [employees] = await connection.query(employeeQuery, queryParams);
@@ -3180,8 +3180,8 @@ app.post('/api/dtr/mass-generate-print-pdf', async (req, res) => {
 
     if (employees.length === 0) {
       console.log('ERROR: No employees found');
-      return res.status(404).json({ 
-        message: 'No employees found for the selected criteria' 
+      return res.status(404).json({
+        message: 'No employees found for the selected criteria'
       });
     }
 
@@ -3226,11 +3226,11 @@ app.post('/api/dtr/mass-generate-print-pdf', async (req, res) => {
 
     pythonProcess.on('close', (code) => {
       console.log('Python process exited with code:', code);
-      
+
       if (code !== 0) {
         console.error('Python script failed with code:', code);
-        return res.status(500).json({ 
-          message: 'Failed to generate mass PDF', 
+        return res.status(500).json({
+          message: 'Failed to generate mass PDF',
           error: errorOutput || 'Unknown error occurred during mass PDF generation'
         });
       }
@@ -3238,13 +3238,13 @@ app.post('/api/dtr/mass-generate-print-pdf', async (req, res) => {
       // Check for success message
       if (output.includes('SUCCESS: Mass PDF created')) {
         console.log('✅ Mass PDF generated successfully');
-        
+
         // Extract the final output path
         const finalOutputMatch = output.match(/FINAL_OUTPUT: (.*)/);
         if (finalOutputMatch) {
           const generatedFilePath = finalOutputMatch[1];
           console.log('Final output path:', generatedFilePath);
-          
+
           res.json({
             success: true,
             filename: filename,
@@ -3260,12 +3260,12 @@ app.post('/api/dtr/mass-generate-print-pdf', async (req, res) => {
             employeeCount: employees.length
           });
         }
-        
+
         console.log('=== MASS EXPORT BACKEND COMPLETED ===');
-        
+
       } else {
         console.error('Mass PDF generation failed. Output:', output);
-        res.status(500).json({ 
+        res.status(500).json({
           message: 'Mass PDF generation failed',
           output: output
         });
@@ -3274,9 +3274,9 @@ app.post('/api/dtr/mass-generate-print-pdf', async (req, res) => {
 
   } catch (error) {
     console.error('Error in /api/dtr/mass-generate-print-pdf:', error);
-    res.status(500).json({ 
-      message: 'Mass PDF generation failed', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Mass PDF generation failed',
+      error: error.message
     });
   } finally {
     if (connection) {
@@ -3289,14 +3289,14 @@ app.post('/api/dtr/mass-generate-print-pdf', async (req, res) => {
 app.get('/api/dtr/mass-pdf-preview/:filename', (req, res) => {
   try {
     const { filename } = req.params;
-    
+
     if (!filename.startsWith('mass_') || !filename.endsWith('.pdf')) {
       return res.status(400).json({ message: 'Invalid filename' });
     }
-    
+
     const currentConfig = loadConfig();
     const exportPath = currentConfig.export?.path || 'exports';
-    
+
     // Check if exportPath is absolute or relative
     let filePath;
     if (path.isAbsolute(exportPath)) {
@@ -3304,18 +3304,18 @@ app.get('/api/dtr/mass-pdf-preview/:filename', (req, res) => {
     } else {
       filePath = path.join(__dirname, exportPath, 'previews', filename);
     }
-    
+
     console.log('🔍 Looking for mass PDF at:', filePath);
-    
+
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: 'PDF file not found' });
     }
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-    
+
     const fileStream = fs.createReadStream(filePath);
-    
+
     fileStream.on('error', (err) => {
       console.error('Error reading mass PDF file:', err);
       if (!res.headersSent) {
@@ -3325,7 +3325,7 @@ app.get('/api/dtr/mass-pdf-preview/:filename', (req, res) => {
 
     fileStream.on('end', () => {
       console.log('✅ Mass PDF sent successfully');
-      
+
       setTimeout(() => {
         if (fs.existsSync(filePath)) {
           fs.unlink(filePath, (unlinkErr) => {
@@ -3340,7 +3340,7 @@ app.get('/api/dtr/mass-pdf-preview/:filename', (req, res) => {
     });
 
     fileStream.pipe(res);
-    
+
   } catch (error) {
     console.error('Error serving mass PDF file:', error);
     res.status(500).json({ message: 'Failed to serve mass PDF file' });
@@ -3364,62 +3364,62 @@ app.post('/api/admins', async (req, res) => {
   let connection;
   try {
     const { name, username, password, level } = req.body;
-    
+
     console.log('Adding new admin:', { name, username, level });
 
     // Validate required fields
     if (!username || !password) {
-      return res.status(400).json({ 
-        error: 'Username and password are required' 
+      return res.status(400).json({
+        error: 'Username and password are required'
       });
     }
 
     if (password.length < 6) {
-      return res.status(400).json({ 
-        error: 'Password must be at least 6 characters' 
+      return res.status(400).json({
+        error: 'Password must be at least 6 characters'
       });
     }
 
     connection = await pool.getConnection();
-    
+
     // Check if username already exists
     const [existing] = await connection.query(
       'SELECT id FROM admins WHERE username = ?',
       [username]
     );
-    
+
     if (existing.length > 0) {
-      return res.status(400).json({ 
-        error: 'Username already exists' 
+      return res.status(400).json({
+        error: 'Username already exists'
       });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-    
+
     const query = `
       INSERT INTO admins (name, username, password, level)
       VALUES (?, ?, ?, ?)
     `;
-    
+
     const [result] = await connection.query(query, [
-      name || username, 
-      username, 
-      hashedPassword, 
+      name || username,
+      username,
+      hashedPassword,
       level || 1
     ]);
-    
+
     console.log('Admin added successfully with ID:', result.insertId);
-    
-    res.json({ 
+
+    res.json({
       message: 'Admin added successfully',
       admin_id: result.insertId
     });
   } catch (error) {
     console.error('Error in POST /api/admins:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to add admin',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -3444,7 +3444,7 @@ app.put('/api/admins/:id', async (req, res) => {
       'SELECT id FROM admins WHERE id = ?',
       [id]
     );
-    
+
     if (existing.length === 0) {
       return res.status(404).json({ error: 'Admin not found' });
     }
@@ -3464,21 +3464,21 @@ app.put('/api/admins/:id', async (req, res) => {
         'SELECT id FROM admins WHERE username = ? AND id != ?',
         [username, id]
       );
-      
+
       if (usernameCheck.length > 0) {
-        return res.status(400).json({ 
-          error: 'Username already exists' 
+        return res.status(400).json({
+          error: 'Username already exists'
         });
       }
-      
+
       updateFields.push('username = ?');
       queryParams.push(username);
     }
 
     if (password !== undefined) {
       if (password.length < 6) {
-        return res.status(400).json({ 
-          error: 'Password must be at least 6 characters' 
+        return res.status(400).json({
+          error: 'Password must be at least 6 characters'
         });
       }
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -3492,31 +3492,31 @@ app.put('/api/admins/:id', async (req, res) => {
     }
 
     if (updateFields.length === 0) {
-      return res.status(400).json({ 
-        error: 'No fields to update' 
+      return res.status(400).json({
+        error: 'No fields to update'
       });
     }
 
     queryParams.push(id);
-    
+
     const query = `
       UPDATE admins 
       SET ${updateFields.join(', ')}
       WHERE id = ?
     `;
-    
+
     const [result] = await connection.query(query, queryParams);
-    
+
     console.log('Admin updated successfully with ID:', id);
-    
-    res.json({ 
+
+    res.json({
       message: 'Admin updated successfully'
     });
   } catch (error) {
     console.error('Error in PUT /api/admins/:id:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to update admin',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -3534,13 +3534,13 @@ app.delete('/api/admins/:id', async (req, res) => {
     console.log('Deleting admin with ID:', id);
 
     connection = await pool.getConnection();
-    
+
     // Check if admin exists
     const [existing] = await connection.query(
       'SELECT id FROM admins WHERE id = ?',
       [id]
     );
-    
+
     if (existing.length === 0) {
       return res.status(404).json({ error: 'Admin not found' });
     }
@@ -3548,25 +3548,25 @@ app.delete('/api/admins/:id', async (req, res) => {
     // Prevent deleting the last admin
     const [allAdmins] = await connection.query('SELECT COUNT(*) as count FROM admins');
     if (allAdmins[0].count <= 1) {
-      return res.status(400).json({ 
-        error: 'Cannot delete the last admin' 
+      return res.status(400).json({
+        error: 'Cannot delete the last admin'
       });
     }
 
     const query = `DELETE FROM admins WHERE id = ?`;
-    
+
     const [result] = await connection.query(query, [id]);
-    
+
     console.log('Admin deleted successfully with ID:', id);
-    
-    res.json({ 
+
+    res.json({
       message: 'Admin deleted successfully'
     });
   } catch (error) {
     console.error('Error in DELETE /api/admins/:id:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to delete admin',
-      details: error.message 
+      details: error.message
     });
   } finally {
     if (connection) {
@@ -3583,17 +3583,17 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
     const { source, biometric_id, employee_id, start_date, end_date } = req.body;
     const file = req.file;
 
-    console.log('Single DTR import request:', { 
-      source, 
-      biometric_id, 
-      employee_id, 
-      start_date, 
-      end_date 
+    console.log('Single DTR import request:', {
+      source,
+      biometric_id,
+      employee_id,
+      start_date,
+      end_date
     });
 
     if (!source || !employee_id) {
-      return res.status(400).json({ 
-        message: 'Source and employee ID are required' 
+      return res.status(400).json({
+        message: 'Source and employee ID are required'
       });
     }
 
@@ -3641,13 +3641,13 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
         }
 
         const created_at = parseTimestampDirect(timestampStr);
-        
+
         dtrs.push({
           employee_id: employee_id.toString(),
           created_at: created_at
         });
       }
-    } 
+    }
     else if (source.toLowerCase() === 'file') {
       if (!file) {
         return res.status(400).json({ message: 'File is required for file source' });
@@ -3661,19 +3661,19 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
       // ADD .dat file processing for single employee
       if (fileExtension === 'dat') {
         console.log('📄 Processing .dat file for single employee...');
-        
+
         try {
           const datRecords = await convertDatFile(file.path);
-          
+
           for (const record of datRecords) {
             // Only process records for target employee
             if (record.employee_id.toString() !== employee_id.toString()) {
               continue;
             }
-            
+
             // Extract date from created_at (already in YYYY-MM-DD format)
             const recordDate = record.created_at.split(' ')[0];
-            
+
             // Check date range - recordDate is already in YYYY-MM-DD format
             if (start_date && end_date) {
               if (recordDate < start_date || recordDate > end_date) {
@@ -3688,13 +3688,13 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
                 continue;
               }
             }
-            
+
             dtrs.push({
               employee_id: employee_id.toString(),
               created_at: record.created_at
             });
           }
-          
+
           console.log(`✅ Found ${dtrs.length} records for employee ${employee_id} from .dat file`);
         } catch (datError) {
           throw new Error(`Failed to process .dat file: ${datError.message}`);
@@ -3704,7 +3704,7 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
       else if (fileExtension === 'txt') {
         const content = fs.readFileSync(file.path, 'utf8');
         const rows = content.split('\n');
-        
+
         if (rows.length === 0) {
           throw new Error('File is empty');
         }
@@ -3713,7 +3713,7 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
 
         for (const row of rows) {
           if (!row.trim()) continue;
-          
+
           const parts = row.trim().split(/\s+/);
           if (parts.length < 7) continue;
 
@@ -3731,12 +3731,12 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
             }
 
             const created_at = formatDateTimeForMySQL(date, time);
-            
+
             dtrs.push({
               employee_id: employee_id.toString(),
               created_at: created_at
             });
-            
+
           } catch (parseError) {
             console.warn(`Error parsing row:`, parseError);
             continue;
@@ -3767,17 +3767,17 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
 
           try {
             let created_at;
-            
+
             if (typeof excelDate === 'number') {
               const jsDate = new Date((excelDate - 25569) * 86400 * 1000);
               const year = jsDate.getUTCFullYear();
               const month = String(jsDate.getUTCMonth() + 1).padStart(2, '0');
               const day = String(jsDate.getUTCDate()).padStart(2, '0');
-              
+
               const [hours, minutes, seconds] = time.split(':').map(Number);
-              
+
               created_at = `${year}-${month}-${day} ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds || 0).padStart(2, '0')}`;
-              
+
               const dateStr = `${year}-${month}-${day}`;
               if (start_date && end_date && !(dateStr >= start_date && dateStr <= end_date)) continue;
               if (start_date && !end_date && !(dateStr >= start_date)) continue;
@@ -3785,7 +3785,7 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
             } else {
               const [datePart, timePart] = excelDate.split(' ');
               created_at = `${datePart} ${time}`;
-              
+
               if (start_date && end_date && !(datePart >= start_date && datePart <= end_date)) continue;
               if (start_date && !end_date && !(datePart >= start_date)) continue;
               if (!start_date && end_date && !(datePart <= end_date)) continue;
@@ -3795,7 +3795,7 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
               employee_id: employee_id.toString(),
               created_at: created_at
             });
-            
+
           } catch (parseError) {
             console.warn(`Error parsing Excel row:`, parseError);
             continue;
@@ -3906,7 +3906,7 @@ function convertDatFile(inputPath) {
           }
 
           const [_, year, month, day, hour, minute, second] = datetimeMatch;
-          
+
           // Validate date components
           const yearNum = parseInt(year);
           const monthNum = parseInt(month);
@@ -3914,13 +3914,13 @@ function convertDatFile(inputPath) {
           const hourNum = parseInt(hour);
           const minuteNum = parseInt(minute);
           const secondNum = parseInt(second);
-          
-          if (yearNum < 2000 || yearNum > 2100 || 
-              monthNum < 1 || monthNum > 12 || 
-              dayNum < 1 || dayNum > 31 ||
-              hourNum < 0 || hourNum > 23 ||
-              minuteNum < 0 || minuteNum > 59 ||
-              secondNum < 0 || secondNum > 59) {
+
+          if (yearNum < 2000 || yearNum > 2100 ||
+            monthNum < 1 || monthNum > 12 ||
+            dayNum < 1 || dayNum > 31 ||
+            hourNum < 0 || hourNum > 23 ||
+            minuteNum < 0 || minuteNum > 59 ||
+            secondNum < 0 || secondNum > 59) {
             console.warn(`⚠️ Invalid date/time values: ${datetimeStr}`);
             skippedCount++;
             continue;
@@ -3962,12 +3962,12 @@ function convertDatFile(inputPath) {
 app.post('/api/biometrics/check-status', async (req, res) => {
   try {
     const { ip_address, port } = req.body;
-    
+
     console.log(`Quick checking biometric device: ${ip_address}:${port}`);
-    
+
     if (!ip_address || !port) {
-      return res.status(400).json({ 
-        error: 'IP address and port are required' 
+      return res.status(400).json({
+        error: 'IP address and port are required'
       });
     }
 
@@ -3992,7 +3992,7 @@ app.post('/api/biometrics/check-status', async (req, res) => {
 
     pythonProcess.on('close', (code) => {
       console.log(`Python process for ${ip_address} exited with code: ${code}`);
-      
+
       if (code !== 0) {
         console.error(`Python script failed for ${ip_address} with code ${code}. Error:`, errorOutput);
         return res.json({
@@ -4052,34 +4052,34 @@ app.post('/api/dtr', async (req, res) => {
   let connection;
   try {
     const { employee_id, date, am_in, am_out, pm_in, pm_out, locked } = req.body;
-    
-    console.log('Adding DTR record:', { 
-      employee_id, 
-      date, 
-      am_in: am_in || '(empty)', 
-      am_out: am_out || '(empty)', 
-      pm_in: pm_in || '(empty)', 
-      pm_out: pm_out || '(empty)', 
-      locked 
+
+    console.log('Adding DTR record:', {
+      employee_id,
+      date,
+      am_in: am_in || '(empty)',
+      am_out: am_out || '(empty)',
+      pm_in: pm_in || '(empty)',
+      pm_out: pm_out || '(empty)',
+      locked
     });
 
     // 1. Date Validation
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(date)) {
-      return res.status(400).json({ 
-        error: 'Invalid date format. Please use YYYY-MM-DD format.' 
+      return res.status(400).json({
+        error: 'Invalid date format. Please use YYYY-MM-DD format.'
       });
     }
 
     // 2. Time Validation
     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/;
-    
+
     const validateTime = (time, fieldName) => {
       if (time && !timeRegex.test(time)) {
         throw new Error(`Invalid time format for ${fieldName}. Please use HH:MM or HH:MM:SS format.`);
       }
     };
-    
+
     if (am_in) validateTime(am_in, "AM In");
     if (am_out) validateTime(am_out, "AM Out");
     if (pm_in) validateTime(pm_in, "PM In");
@@ -4087,15 +4087,15 @@ app.post('/api/dtr', async (req, res) => {
 
     // 3. Check if employee exists
     connection = await pool.getConnection();
-    
+
     const [employeeRows] = await connection.query(
       'SELECT id FROM employees WHERE id = ?',
       [employee_id]
     );
-    
+
     if (employeeRows.length === 0) {
-      return res.status(404).json({ 
-        error: `Employee with ID ${employee_id} not found` 
+      return res.status(404).json({
+        error: `Employee with ID ${employee_id} not found`
       });
     }
 
@@ -4104,10 +4104,10 @@ app.post('/api/dtr', async (req, res) => {
       'SELECT id FROM dtrs WHERE employee_id = ? AND date = ?',
       [employee_id, date]
     );
-    
+
     if (existingDTR.length > 0) {
-      return res.status(400).json({ 
-        error: `A DTR record already exists for employee ${employee_id} on ${date}` 
+      return res.status(400).json({
+        error: `A DTR record already exists for employee ${employee_id} on ${date}`
       });
     }
 
@@ -4122,14 +4122,14 @@ app.post('/api/dtr', async (req, res) => {
       INSERT INTO dtrs (employee_id, date, am_in, am_out, pm_in, pm_out, locked)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
-    
+
     const [result] = await connection.query(query, [
-      employee_id, 
-      date, 
-      amInValue, 
-      amOutValue, 
-      pmInValue, 
-      pmOutValue, 
+      employee_id,
+      date,
+      amInValue,
+      amOutValue,
+      pmInValue,
+      pmOutValue,
       locked ? 1 : 0
     ]);
 
@@ -4141,7 +4141,7 @@ app.post('/api/dtr', async (req, res) => {
       [1, 'add_dtr', 'dtr', '', `Added DTR for employee ${employee_id} on ${date}`]
     );
 
-    res.json({ 
+    res.json({
       success: true,
       message: 'DTR record added successfully',
       dtr_id: result.insertId,
@@ -4152,8 +4152,8 @@ app.post('/api/dtr', async (req, res) => {
 
   } catch (error) {
     console.error('Error in POST /api/dtr:', error);
-    res.status(500).json({ 
-      error: error.message || 'Failed to add DTR record' 
+    res.status(500).json({
+      error: error.message || 'Failed to add DTR record'
     });
   } finally {
     if (connection) {
@@ -4180,8 +4180,8 @@ app.delete('/api/dtr/:id', async (req, res) => {
     );
 
     if (existingRows.length === 0) {
-      return res.status(404).json({ 
-        error: 'DTR record not found' 
+      return res.status(404).json({
+        error: 'DTR record not found'
       });
     }
 
@@ -4193,10 +4193,10 @@ app.delete('/api/dtr/:id', async (req, res) => {
       [id]
     );
 
-    console.log('✅ DTR record deleted:', { 
-      id, 
-      employee_id: dtrRecord.employee_id, 
-      date: dtrRecord.date 
+    console.log('✅ DTR record deleted:', {
+      id,
+      employee_id: dtrRecord.employee_id,
+      date: dtrRecord.date
     });
 
     // Log the action
@@ -4205,7 +4205,7 @@ app.delete('/api/dtr/:id', async (req, res) => {
       [1, 'delete_dtr', 'dtr', `DTR ${id} for employee ${dtrRecord.employee_id} on ${dtrRecord.date}`, '']
     );
 
-    res.json({ 
+    res.json({
       success: true,
       message: 'DTR record deleted successfully',
       deleted_id: id,
@@ -4215,8 +4215,8 @@ app.delete('/api/dtr/:id', async (req, res) => {
 
   } catch (error) {
     console.error('Error in DELETE /api/dtr/:id:', error);
-    res.status(500).json({ 
-      error: error.message || 'Failed to delete DTR record' 
+    res.status(500).json({
+      error: error.message || 'Failed to delete DTR record'
     });
   } finally {
     if (connection) {
@@ -4229,7 +4229,7 @@ app.delete('/api/dtr/:id', async (req, res) => {
 // ========== DEBUG SESSION ENDPOINT ==========
 app.get('/api/debug/sessions', (req, res) => {
   const sessions = [];
-  
+
   activeSessions.forEach((session, sessionId) => {
     sessions.push({
       sessionId: sessionId.substring(0, 20) + '...',
@@ -4243,7 +4243,7 @@ app.get('/api/debug/sessions', (req, res) => {
       currentMethod: session.method
     });
   });
-  
+
   res.json({
     activeCount: sessions.length,
     sessions: sessions
@@ -4254,12 +4254,12 @@ app.get('/api/debug/sessions', (req, res) => {
 // Periodic session monitor
 function startSessionMonitor() {
   console.log('\n🔄 Starting session monitor...');
-  
+
   // Print active sessions every 60 seconds
   setInterval(() => {
     printActiveSessions();
   }, 60000);
-  
+
   // Initial print after 5 seconds
   setTimeout(() => {
     printActiveSessions();
@@ -4270,12 +4270,12 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📁 Config file: ${CONFIG_FILE_PATH}`);
-  
+
   // Ensure export directories exist
   const currentConfig = loadConfig();
   const exportPath = currentConfig.export?.path || 'exports';
   let exportDir, previewsDir;
-  
+
   if (path.isAbsolute(exportPath)) {
     exportDir = exportPath;
     previewsDir = path.join(exportPath, 'previews');
@@ -4283,7 +4283,7 @@ app.listen(PORT, () => {
     exportDir = path.join(__dirname, exportPath);
     previewsDir = path.join(__dirname, exportPath, 'previews');
   }
-  
+
   try {
     if (!fs.existsSync(exportDir)) {
       fs.mkdirSync(exportDir, { recursive: true });
@@ -4296,10 +4296,10 @@ app.listen(PORT, () => {
   } catch (err) {
     console.error('❌ Failed to create export directories:', err.message);
   }
-  
+
   console.log('\n💡 Session monitoring enabled');
   console.log('💡 Active sessions will be displayed every 60 seconds');
-  
+
   // Start session monitoring
   startSessionMonitor();
 });
