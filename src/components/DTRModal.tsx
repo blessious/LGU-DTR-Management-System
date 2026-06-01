@@ -1432,7 +1432,7 @@ export default function DTRModal({ isOpen, onClose, employee }: DTRModalProps) {
                   className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 >
                   {noters.map((noter) => (
-                    <option key={noter.noter_id} value={noter.signatory} className="dark:bg-gray-700">
+                    <option key={`${noter.noter_id}-${noter.signatory}-${noter.position}`} value={noter.signatory} className="dark:bg-gray-700">
                       {noter.signatory} - {noter.position} {/* Display the actual signatory name */}
                     </option>
                   ))}
@@ -1461,7 +1461,7 @@ export default function DTRModal({ isOpen, onClose, employee }: DTRModalProps) {
                     className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   >
                     {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i + 1} value={i + 1} className="dark:bg-gray-700">
+                      <option key={`first-month-${i + 1}`} value={i + 1} className="dark:bg-gray-700">
                         {new Date(2000, i).toLocaleString('default', { month: 'long' })}
                       </option>
                     ))}
@@ -1509,7 +1509,7 @@ export default function DTRModal({ isOpen, onClose, employee }: DTRModalProps) {
                   >
                     <option value={0} className="dark:bg-gray-700">None</option>
                     {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i + 1} value={i + 1} className="dark:bg-gray-700">
+                      <option key={`second-month-${i + 1}`} value={i + 1} className="dark:bg-gray-700">
                         {new Date(2000, i).toLocaleString('default', { month: 'long' })}
                       </option>
                     ))}
