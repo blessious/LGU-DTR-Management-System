@@ -78,7 +78,7 @@ def export_dtr(employee_id, noter_signatory, noter_position, first_month, first_
     # Initialize database connection
     db = Database(
         host=db_config.get('host', '192.168.1.52'),
-        database=db_config.get('database', 'bless_dtr_test'),
+        database=db_config.get('database', 'new_dtr'),
         user=db_config.get('user', 'adtr'),
         password=db_config.get('password', 'adtr'),
         port=db_config.get('port', 3306)

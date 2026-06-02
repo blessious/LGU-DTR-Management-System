@@ -279,7 +279,7 @@ export default function Layout({ children }: LayoutProps) {
               </Label>
               <Input
                 id="database"
-                placeholder="e.g., bless_dtr_test"
+                placeholder="e.g., new_dtr"
                 value={settings.database}
                 onChange={(e) => setSettings({...settings, database: e.target.value})}
                 disabled={isSavingSettings}

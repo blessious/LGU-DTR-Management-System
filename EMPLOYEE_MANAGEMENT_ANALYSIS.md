@@ -2,7 +2,7 @@
 
 ## Database Schema Overview
 
-### Current Database: `bless_dtr_test` (MariaDB 10.4.32)
+### Current Database: `new_dtr` (MariaDB 10.4.32)
 
 ---
 
@@ -562,4 +562,4 @@ created_at: 2025-09-16 08:51:55
 ---
 
 *Last Updated: April 20, 2026*
-*Database: bless_dtr_test (MariaDB 10.4.32)*
+*Database: new_dtr (MariaDB 10.4.32)*

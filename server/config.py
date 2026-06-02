@@ -22,7 +22,7 @@ def load_config():
             'host': '192.168.1.52',
             'user': 'adtr',
             'password': 'adtr',
-            'database': 'bless_dtr_test',
+            'database': 'new_dtr',
             'port': 3306
         },
         'export': {

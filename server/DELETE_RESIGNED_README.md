@@ -9,7 +9,7 @@ DB_CONFIG = {
     'host': '192.168.1.52',           # Your MySQL host
     'user': 'root',                   # Your MySQL user
     'password': 'your_password',      # ⚠️ CHANGE THIS!
-    'database': 'bless_dtr_test'
+    'database': 'new_dtr'
 }
 
 INACTIVITY_MONTHS = 6  # Change if needed (default: 6 months)

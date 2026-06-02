@@ -1,6 +1,6 @@
 -- MySQL dump 10.13  Distrib 8.0.40, for Win64 (x86_64)
 --
--- Host: 192.168.1.52    Database: bless_dtr_test
+-- Host: 192.168.1.52    Database: new_dtr
 -- ------------------------------------------------------
 -- Server version	5.5.5-10.4.32-MariaDB
 

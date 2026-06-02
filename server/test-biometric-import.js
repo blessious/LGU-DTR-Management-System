@@ -12,7 +12,7 @@ const pool = mysql.createPool({
   host: process.env.MYSQL_HOST || '192.168.1.52',
   user: process.env.MYSQL_USER || 'adtr',
   password: process.env.MYSQL_PASSWORD || 'adtr',
-  database: process.env.MYSQL_DATABASE || 'bless_dtr_test',
+  database: process.env.MYSQL_DATABASE || 'new_dtr',
   port: 3306,
   waitForConnections: true,
   connectionLimit: 10,

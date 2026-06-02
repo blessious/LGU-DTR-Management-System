@@ -54,8 +54,8 @@ Application → Database Manager → Create MySQL Connection → Execute Query
 ### Test 1: Check Connection Logs
 When the Python scripts start, you should see:
 ```
-2025-01-15 10:30:45 - INFO - DATABASE: Attempting to connect to 192.168.1.52:3306/bless_dtr_test (attempt 1/5)
-2025-01-15 10:30:45 - INFO - DATABASE: ✓ Successfully connected to database: 192.168.1.52/bless_dtr_test
+2025-01-15 10:30:45 - INFO - DATABASE: Attempting to connect to 192.168.1.52:3306/new_dtr (attempt 1/5)
+2025-01-15 10:30:45 - INFO - DATABASE: ✓ Successfully connected to database: 192.168.1.52/new_dtr
 ```
 
 ### Test 2: Simulate Database Restart
@@ -67,9 +67,9 @@ When the Python scripts start, you should see:
 ### Test 3: Monitor Reconnection Messages
 Watch the console output for messages like:
 ```
-Attempting to connect to 192.168.1.52:3306/bless_dtr_test (attempt 1/5)
+Attempting to connect to 192.168.1.52:3306/new_dtr (attempt 1/5)
 Connection failed. Retrying in 2s...
-Attempting to connect to 192.168.1.52:3306/bless_dtr_test (attempt 2/5)
+Attempting to connect to 192.168.1.52:3306/new_dtr (attempt 2/5)
 ✓ Successfully connected to database
 ```
 
@@ -79,7 +79,7 @@ Database settings are stored in `config.json`:
 - **host**: `192.168.1.52`
 - **user**: `adtr`
 - **password**: `adtr`
-- **database**: `bless_dtr_test`
+- **database**: `new_dtr`
 - **port**: `3306`
 
 These settings are automatically loaded and used by the reconnection system.

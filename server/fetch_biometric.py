@@ -23,7 +23,7 @@ def get_biometric_from_db(biometric_id):
             host=db_config.get('host', '192.168.1.52'),
             user=db_config.get('user', 'adtr'),
             password=db_config.get('password', 'adtr'),
-            database=db_config.get('database', 'bless_dtr_test'),
+            database=db_config.get('database', 'new_dtr'),
             port=int(db_config.get('port', 3306))
         )
         

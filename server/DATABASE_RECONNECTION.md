@@ -49,7 +49,7 @@ from config import get_db_config
 db_config = get_db_config()
 db = Database(
     host=db_config.get('host', '192.168.1.52'),
-    database=db_config.get('database', 'bless_dtr_test'),
+    database=db_config.get('database', 'new_dtr'),
     user=db_config.get('user', 'adtr'),
     password=db_config.get('password', 'adtr'),
     port=db_config.get('port', 3306)
@@ -66,10 +66,10 @@ db.close()
 #### Logging Output
 When the database reconnects, you'll see logs like:
 ```
-2025-01-15 10:30:45 - INFO - DATABASE: Attempting to connect to 192.168.1.52:3306/bless_dtr_test (attempt 1/5)
+2025-01-15 10:30:45 - INFO - DATABASE: Attempting to connect to 192.168.1.52:3306/new_dtr (attempt 1/5)
 2025-01-15 10:30:46 - WARNING - DATABASE: Connection failed: Can't connect to MySQL server. Retrying in 2s... (1/5)
-2025-01-15 10:30:48 - INFO - DATABASE: Attempting to connect to 192.168.1.52:3306/bless_dtr_test (attempt 2/5)
-2025-01-15 10:30:49 - INFO - DATABASE: ✓ Successfully connected to database: 192.168.1.52/bless_dtr_test
+2025-01-15 10:30:48 - INFO - DATABASE: Attempting to connect to 192.168.1.52:3306/new_dtr (attempt 2/5)
+2025-01-15 10:30:49 - INFO - DATABASE: ✓ Successfully connected to database: 192.168.1.52/new_dtr
 ```
 
 ### Troubleshooting
@@ -103,7 +103,7 @@ The database connection parameters are stored in `config.json` and loaded by `co
     "host": "192.168.1.52",
     "user": "adtr",
     "password": "adtr",
-    "database": "bless_dtr_test",
+    "database": "new_dtr",
     "port": 3306
   },
   "export": {

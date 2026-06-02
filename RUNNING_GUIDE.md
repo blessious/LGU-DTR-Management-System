@@ -24,7 +24,7 @@ Before you begin, ensure the following software is installed on the target PC:
 ### 1. Database Setup
 1.  Open **XAMPP Control Panel** and start **MySQL**.
 2.  Go to [http://localhost/phpmyadmin](http://localhost/phpmyadmin).
-3.  Create a new database named `bless_dtr_test`.
+3.  Create a new database named `new_dtr`.
 4.  Click on the database, go to the **Import** tab.
 5.  Choose the `database.sql` file from the project folder and click **Import**.
 
@@ -37,7 +37,7 @@ Open `.env` and update the values:
 MYSQL_HOST=localhost
 MYSQL_USER=root
 MYSQL_PASSWORD=
-MYSQL_DATABASE=bless_dtr_test
+MYSQL_DATABASE=new_dtr
 VITE_API_URL=http://localhost:5000
 ```
 *(If the database is on another PC, change `localhost` to that PC's IP address.)*
@@ -50,7 +50,7 @@ The Python scripts use this file. If it doesn't exist, it will be created automa
     "host": "localhost",
     "user": "root",
     "password": "",
-    "database": "bless_dtr_test",
+    "database": "new_dtr",
     "port": 3306
   },
   "export": {

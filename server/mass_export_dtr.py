@@ -44,7 +44,7 @@ def create_mass_pdf(office, employee_type, noter_signatory, noter_position,
     db_config = get_db_config()
     db = Database(
         host=db_config.get('host', '192.168.1.52'),
-        database=db_config.get('database', 'bless_dtr_test'),
+        database=db_config.get('database', 'new_dtr'),
         user=db_config.get('user', 'adtr'),
         password=db_config.get('password', 'adtr'),
         port=db_config.get('port', 3306)

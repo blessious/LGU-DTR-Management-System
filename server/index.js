@@ -127,7 +127,7 @@ function loadConfig() {
           host: process.env.MYSQL_HOST || '192.168.1.52',
           user: process.env.MYSQL_USER || 'adtr',
           password: process.env.MYSQL_PASSWORD || 'adtr',
-          database: process.env.MYSQL_DATABASE || 'bless_dtr_test',
+          database: process.env.MYSQL_DATABASE || 'new_dtr',
           port: parseInt(process.env.MYSQL_PORT || '3306')
         },
         export: {
@@ -144,7 +144,7 @@ function loadConfig() {
         host: '192.168.1.52',
         user: 'adtr',
         password: 'adtr',
-        database: 'bless_dtr_test',
+        database: 'new_dtr',
         port: 3306
       },
       export: {
