@@ -241,7 +241,8 @@ async updateEmployee(id: number, employeeData: any) {
     
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to generate PDF for printing');
+      const message = errorData.error || errorData.message || 'Failed to generate PDF for printing';
+      throw new Error(message);
     }
     
     return response.json();
