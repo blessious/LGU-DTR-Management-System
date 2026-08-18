@@ -53,6 +53,105 @@ def timedelta_to_time(delta):
     result_time = result_datetime.time()
     return result_time
 
+
+def classify_daily_scans(time_deltas, effective_schedule):
+    """Classify one day's ordered punches without reading or writing the database."""
+    regular_am_in, regular_am_out, regular_pm_in, regular_pm_out = effective_schedule
+
+    lunch_start = regular_am_out
+    lunch_end = regular_pm_in
+
+    morning_scans = []
+    lunch_scans = []
+    afternoon_scans = []
+
+    for scan in sorted(time_deltas):
+        if scan < lunch_start:
+            morning_scans.append(scan)
+        elif scan < lunch_end:
+            lunch_scans.append(scan)
+        else:
+            afternoon_scans.append(scan)
+
+    has_morning_work = bool(morning_scans)
+    has_afternoon_work = bool(lunch_scans or afternoon_scans)
+
+    am_in = None
+    am_out = None
+    pm_in = None
+    pm_out = None
+
+    if has_morning_work:
+        am_in = morning_scans[0]
+
+        if lunch_scans:
+            am_out = lunch_scans[0]
+        elif len(morning_scans) > 1:
+            for scan in reversed(morning_scans):
+                if scan - am_in > timedelta(minutes=1):
+                    am_out = scan
+                    break
+
+    if has_afternoon_work:
+        if has_morning_work:
+            if len(lunch_scans) > 1:
+                pm_in = lunch_scans[-1]
+            elif len(afternoon_scans) > 1:
+                pm_in = afternoon_scans[0]
+            elif len(afternoon_scans) == 1:
+                single_afternoon = afternoon_scans[0]
+                distance_to_in = abs((single_afternoon - regular_pm_in).total_seconds())
+                distance_to_out = abs((single_afternoon - regular_pm_out).total_seconds())
+
+                if distance_to_in < distance_to_out:
+                    pm_in = single_afternoon
+                else:
+                    pm_out = single_afternoon
+        else:
+            # A lunch-window punch followed by distinct PM in/out punches is
+            # clear evidence of a missing AM in, not an afternoon-only arrival.
+            if len(lunch_scans) == 1 and len(afternoon_scans) >= 2:
+                am_out = lunch_scans[0]
+                pm_in = afternoon_scans[0]
+                pm_out = afternoon_scans[-1]
+            elif len(lunch_scans) > 1:
+                am_out = lunch_scans[0]
+                pm_in = lunch_scans[-1]
+            elif len(lunch_scans) == 1:
+                pm_in = lunch_scans[0]
+            elif len(afternoon_scans) > 1:
+                pm_in = afternoon_scans[0]
+                pm_out = afternoon_scans[-1]
+            elif len(afternoon_scans) == 1:
+                single_afternoon = afternoon_scans[0]
+                distance_to_in = abs((single_afternoon - regular_pm_in).total_seconds())
+                distance_to_out = abs((single_afternoon - regular_pm_out).total_seconds())
+                max_reasonable_distance = 4 * 3600
+
+                if distance_to_in > max_reasonable_distance and distance_to_out > max_reasonable_distance:
+                    pm_out = single_afternoon
+                elif distance_to_in < distance_to_out:
+                    pm_in = single_afternoon
+                else:
+                    pm_out = single_afternoon
+
+        if afternoon_scans and pm_in and not pm_out:
+            for scan in afternoon_scans:
+                if scan > pm_in:
+                    pm_out = scan
+        elif afternoon_scans and not pm_in and len(afternoon_scans) > 1:
+            pm_out = afternoon_scans[-1]
+
+    if am_in and am_out and am_out - am_in <= timedelta(minutes=1):
+        am_out = None
+
+    if pm_in and pm_out and pm_in == pm_out:
+        total_scans = len(morning_scans) + len(lunch_scans) + len(afternoon_scans)
+        if total_scans > 1:
+            pm_out = None
+
+    return am_in, am_out, pm_in, pm_out
+
 def get_employee_schedule(db, employee_id):
     """Get employee's regular schedule"""
     try:
@@ -188,154 +287,13 @@ def refresh_employee_dtr(db, employee_id):
             td = timedelta(hours=time.hour, minutes=time.minute, seconds=time.second)
             time_deltas.append(td)
         
-        # ====== STEP 1: CATEGORIZE SCANS BY TIME PERIOD ======
         # Determine the effective schedule for this specific date
         if str(date_str) in overrides:
             effective_schedule = overrides[str(date_str)]
         else:
             effective_schedule = default_schedule
-            
-        regular_am_in, regular_am_out, regular_pm_in, regular_pm_out = effective_schedule
-        
-        lunch_start = regular_am_out   # e.g., 12:00
-        lunch_end = regular_pm_in      # e.g., 13:00
-        
-        morning_scans = []      # Before lunch_start
-        lunch_scans = []        # Between lunch_start and lunch_end
-        afternoon_scans = []    # After lunch_end
-        
-        for td in time_deltas:
-            if td < lunch_start:
-                morning_scans.append(td)
-            elif td >= lunch_start and td < lunch_end:
-                lunch_scans.append(td)
-            else:
-                afternoon_scans.append(td)
-        
-        # ====== STEP 2: DETERMINE SHIFT TYPE ======
-        has_morning_work = len(morning_scans) > 0
-        has_afternoon_work = len(afternoon_scans) > 0 or len(lunch_scans) > 0
-        
-        # ====== STEP 3: ASSIGN TIMES BASED ON SHIFT TYPE ======
-        am_in = None
-        am_out = None
-        pm_in = None
-        pm_out = None
-        
-        # ===== MORNING SHIFT LOGIC =====
-        if has_morning_work:
-            # AM_IN: First morning scan
-            am_in = morning_scans[0]
-            
-            # AM_OUT: Determine when they left
-            if lunch_scans:
-                # Left for lunch (first lunch scan)
-                am_out = lunch_scans[0]
-            elif len(morning_scans) > 1:
-                # No lunch scans, use last morning scan (must be >1min from AM_IN)
-                for scan in reversed(morning_scans):
-                    if scan - am_in > timedelta(minutes=1):
-                        am_out = scan
-                        break
-            # If only 1 morning scan and no lunch scans, AM_OUT stays None
-        
-        # ===== AFTERNOON SHIFT LOGIC =====
-        if has_afternoon_work:
-            # PM_IN: Determine when they started afternoon
-            if has_morning_work:
-                # Full day or came back from lunch
-                if len(lunch_scans) > 1:
-                    # Multiple lunch scans: last lunch = return from lunch
-                    pm_in = lunch_scans[-1]
-                elif len(afternoon_scans) > 1:
-                    # Multiple afternoon scans: first = PM_IN, last = PM_OUT
-                    pm_in = afternoon_scans[0]
-                elif len(afternoon_scans) == 1:
-                    # Single afternoon scan - determine if it's IN or OUT based on schedule
-                    single_afternoon = afternoon_scans[0]
-                    
-                    # Convert schedule times to timedelta for comparison
-                    expected_pm_in = regular_pm_in
-                    expected_pm_out = regular_pm_out
-                    
-                    # Calculate distances from expected times
-                    distance_to_in = abs((single_afternoon - expected_pm_in).total_seconds())
-                    distance_to_out = abs((single_afternoon - expected_pm_out).total_seconds())
-                    
-                    # Assign based on which expected time it's closer to
-                    if distance_to_in < distance_to_out:
-                        # Closer to expected return time
-                        pm_in = single_afternoon
-                    else:
-                        # Closer to expected departure time
-                        pm_out = single_afternoon
-                # else: no afternoon scans and <=1 lunch scan = no proof of return, pm_in stays None
-            else:
-                # Afternoon-only shift (no morning work)
-                if len(lunch_scans) > 1:
-                    # Multiple lunch scans
-                    am_out = lunch_scans[0]
-                    pm_in = lunch_scans[-1]
-                elif len(lunch_scans) == 1:
-                    # Single lunch scan: treat as PM_IN (arrival)
-                    pm_in = lunch_scans[0]
-                elif len(afternoon_scans) > 1:
-                    # Multiple afternoon scans
-                    pm_in = afternoon_scans[0]
-                    pm_out = afternoon_scans[-1]
-                elif len(afternoon_scans) == 1:
-                    # Single afternoon scan - determine if IN or OUT based on schedule
-                    single_afternoon = afternoon_scans[0]
-                    
-                    expected_pm_in = regular_pm_in
-                    expected_pm_out = regular_pm_out
-                    
-                    distance_to_in = abs((single_afternoon - expected_pm_in).total_seconds())
-                    distance_to_out = abs((single_afternoon - expected_pm_out).total_seconds())
-                    
-                    # If scan is VERY far from both expected times (>4 hours from both)
-                    # Default to PM_OUT (assume overtime/late departure)
-                    max_reasonable_distance = 4 * 3600  # 4 hours in seconds
-                    
-                    if distance_to_in > max_reasonable_distance and distance_to_out > max_reasonable_distance:
-                        # Very late scan - assume departure (overtime)
-                        pm_out = single_afternoon
-                    elif distance_to_in < distance_to_out:
-                        # Closer to expected arrival
-                        pm_in = single_afternoon
-                    else:
-                        # Closer to expected departure
-                        pm_out = single_afternoon
-                        
-            # PM_OUT: Last scan of the day - ONLY if there's a distinct later scan
-            if afternoon_scans and pm_in and not pm_out:
-                # Look for scans AFTER pm_in
-                for scan in afternoon_scans:
-                    if scan > pm_in:
-                        pm_out = scan
-            elif afternoon_scans and not pm_in and len(afternoon_scans) > 1:
-                # Multiple afternoon scans, no PM_IN assigned (shouldn't happen but safety)
-                pm_out = afternoon_scans[-1]
-                    
-        # ====== STEP 4: VALIDATION ======
-        # Ensure minimum 1-minute gaps
-        if am_in and am_out and am_out - am_in <= timedelta(minutes=1):
-            am_out = None
 
-        if am_out and pm_in and pm_in - am_out <= timedelta(minutes=1):
-            # Very close times might indicate data issue
-            pass
-
-        # **NEW: Universal duplicate prevention**
-        # If PM_IN and PM_OUT are the same, clear PM_OUT (except single afternoon scan case)
-        if pm_in and pm_out and pm_in == pm_out:
-            # Only allow duplicate if it's a single scan scenario (afternoon-only, one scan total)
-            # Count total scans: if more than 1 scan exists, don't duplicate
-            total_scans = len(morning_scans) + len(lunch_scans) + len(afternoon_scans)
-            if total_scans > 1:
-                # Multiple scans exist - don't duplicate PM_IN to PM_OUT
-                pm_out = None
-            # else: single scan scenario - keep both (valid)
+        am_in, am_out, pm_in, pm_out = classify_daily_scans(time_deltas, effective_schedule)
         
         # Convert timedelta back to time objects
         if am_in:
