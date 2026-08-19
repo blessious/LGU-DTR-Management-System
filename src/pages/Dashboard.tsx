@@ -55,6 +55,9 @@ export default function Dashboard() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshRangeOpen, setIsRefreshRangeOpen] = useState(false);
+  const [refreshStartDate, setRefreshStartDate] = useState<Date>(new Date());
+  const [refreshEndDate, setRefreshEndDate] = useState<Date>(new Date());
   const [isMassExportModalOpen, setIsMassExportModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
@@ -98,29 +101,10 @@ export default function Dashboard() {
       const dateStr = format(selectedDate, "yyyy-MM-dd");
       const data = await api.attendance(dateStr);
       
-      // Calculate tardiness for each record
-      const attendanceWithTardiness = await Promise.all(
-        data.map(async (record: any) => {
-          try {
-            // Get employee schedule to calculate tardiness
-            const employeeData = await api.getEmployeeById(record.id);
-            
-            // Calculate tardiness based on schedule and actual times
-            const tardinessMinutes = calculateTardinessForDay(record, employeeData);
-            
-            return {
-              ...record,
-              tardiness: tardinessMinutes
-            };
-          } catch (error) {
-            console.error(`Error calculating tardiness for employee ${record.id}:`, error);
-            return {
-              ...record,
-              tardiness: null
-            };
-          }
-        })
-      );
+      const attendanceWithTardiness = data.map((record: any) => ({
+        ...record,
+        tardiness: calculateTardinessForDay(record)
+      }));
       
       setAttendance(attendanceWithTardiness);
     } catch (error) {
@@ -131,7 +115,7 @@ export default function Dashboard() {
   };
 
   // Helper function to calculate tardiness for a single day
-  const calculateTardinessForDay = (attendanceRecord: any, employeeData: any) => {
+  const calculateTardinessForDay = (attendanceRecord: any) => {
     let totalTardiness = 0;
     
     // Helper function to convert time string to minutes
@@ -142,16 +126,16 @@ export default function Dashboard() {
     };
     
     // Calculate AM tardiness
-    if (employeeData.am_in && attendanceRecord.am_in) {
-      const scheduledAM = timeToMinutes(employeeData.am_in);
+    if (attendanceRecord.schedule_am_in && attendanceRecord.am_in) {
+      const scheduledAM = timeToMinutes(attendanceRecord.schedule_am_in);
       const actualAM = timeToMinutes(attendanceRecord.am_in);
       const amTardiness = Math.max(0, actualAM - scheduledAM);
       totalTardiness += amTardiness;
     }
     
     // Calculate PM tardiness
-    if (employeeData.pm_in && attendanceRecord.pm_in) {
-      const scheduledPM = timeToMinutes(employeeData.pm_in);
+    if (attendanceRecord.schedule_pm_in && attendanceRecord.pm_in) {
+      const scheduledPM = timeToMinutes(attendanceRecord.schedule_pm_in);
       const actualPM = timeToMinutes(attendanceRecord.pm_in);
       const pmTardiness = Math.max(0, actualPM - scheduledPM);
       totalTardiness += pmTardiness;
@@ -181,9 +165,19 @@ export default function Dashboard() {
     }
   };
 
-  const handleRefreshDTRs = async () => {
+  const openRefreshRangeDialog = () => {
     if (!canUpdate()) {
       toast.info("You don't have permission to refresh DTRs");
+      return;
+    }
+    setRefreshStartDate(selectedDate);
+    setRefreshEndDate(selectedDate);
+    setIsRefreshRangeOpen(true);
+  };
+
+  const handleRefreshDTRs = async () => {
+    if (refreshStartDate > refreshEndDate) {
+      toast.error("Start date cannot be after end date");
       return;
     }
 
@@ -194,19 +188,45 @@ export default function Dashboard() {
         description: "This may take a while. Please wait..."
       });
 
-      await api.refreshDTR();
+      const startDateValue = format(refreshStartDate, "yyyy-MM-dd");
+      const endDateValue = format(refreshEndDate, "yyyy-MM-dd");
+      const result = await api.refreshDTR({ startDate: startDateValue, endDate: endDateValue });
       
       toast.dismiss(loadingToast);
       toast.success("DTRs refreshed successfully", {
-        description: "All DTR records have been updated from imports table"
+        description: `${result.records_processed || 0} DTR day(s) updated from ${format(refreshStartDate, "MMM dd, yyyy")} to ${format(refreshEndDate, "MMM dd, yyyy")}`
       });
 
+      setIsRefreshRangeOpen(false);
       await fetchAttendance();
     } catch (error: any) {
       console.error('Error refreshing DTRs:', error);
       toast.error("Failed to refresh DTRs", {
         description: error.message || "An error occurred while refreshing DTR records"
       });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleRefreshAllDTRs = async () => {
+    if (!canUpdate()) {
+      toast.info("You don't have permission to refresh all DTRs");
+      return;
+    }
+    if (!window.confirm("Refresh all unlocked DTR history from raw imports? This can take longer.")) return;
+
+    try {
+      setIsRefreshing(true);
+      const loadingToast = toast.loading("Refreshing all DTR history...");
+      const result = await api.refreshDTR({ allHistory: true });
+      toast.dismiss(loadingToast);
+      toast.success("All DTR history refreshed", {
+        description: `${result.records_processed || 0} DTR day(s) updated; locked rows were preserved.`
+      });
+      await fetchAttendance();
+    } catch (error: any) {
+      toast.error("Failed to refresh all DTR history", { description: error.message });
     } finally {
       setIsRefreshing(false);
     }
@@ -246,7 +266,7 @@ export default function Dashboard() {
         });
 
         try {
-          await api.importDTR({
+          const result = await api.importDTR({
             source: 'biometric',
             biometric_id: selectedDevice.biometric_id,
             start_date: format(startDate, "yyyy-MM-dd"),
@@ -254,20 +274,10 @@ export default function Dashboard() {
           });
 
           toast.dismiss(loadingToast);
-          toast.success("DTR imported successfully", {
-            description: `Imported from ${selectedDevice.name} (${format(startDate, "MM/dd/yyyy")} to ${format(endDate, "MM/dd/yyyy")})`
+          toast[result.refresh_success ? "success" : "warning"](result.message, {
+            description: `${result.records_inserted} new punch(es); ${result.duplicates_skipped} duplicate(s) skipped.`
           });
-
-          setTimeout(() => {
-            toast.info("Refresh DTR table?", {
-              description: "Click 'Refresh DTRs' to update the DTR records",
-              duration: Infinity, // This keeps the toast visible until manually dismissed
-              action: {
-                label: "Refresh Now",
-                onClick: handleRefreshDTRs
-              }
-            });
-          }, 1000);
+          await fetchAttendance();
 
         } catch (error: any) {
           toast.dismiss(loadingToast);
@@ -298,23 +308,13 @@ export default function Dashboard() {
           formData.append('start_date', format(startDate, "yyyy-MM-dd"));
           formData.append('end_date', format(endDate, "yyyy-MM-dd"));
 
-          await api.importDTRFile(formData);
+          const result = await api.importDTRFile(formData);
 
           toast.dismiss(loadingToast);
-          toast.success("DTR file imported successfully", {
-            description: `Imported ${selectedFile.name}`
+          toast[result.refresh_success ? "success" : "warning"](result.message, {
+            description: `${result.records_inserted} new punch(es); ${result.duplicates_skipped} duplicate(s) skipped.`
           });
-
-          setTimeout(() => {
-            toast.info("Refresh DTR table?", {
-              description: "Click 'Refresh DTRs' to update the DTR records",
-              duration: Infinity, // This keeps the toast visible until manually dismissed
-              action: {
-                label: "Refresh Now",
-                onClick: handleRefreshDTRs
-              }
-            });
-          }, 1000);
+          await fetchAttendance();
 
         } catch (error: any) {
           toast.dismiss(loadingToast);
@@ -535,7 +535,7 @@ const handleFileSelect = (file: File) => {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={handleRefreshDTRs}
+                          onClick={openRefreshRangeDialog}
                           disabled={isRefreshing || isImporting}
                           className="gap-1 text-xs dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                         >
@@ -544,7 +544,7 @@ const handleFileSelect = (file: File) => {
                           ) : (
                             <RefreshCw className="h-3 w-3" />
                           )}
-                          Refresh
+                          Refresh Date
                         </Button>
                       )}
                     </div>
@@ -741,7 +741,7 @@ const handleFileSelect = (file: File) => {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleRefreshDTRs}
+                onClick={openRefreshRangeDialog}
                 disabled={isRefreshing}
                 className="text-xs dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
               >
@@ -750,7 +750,18 @@ const handleFileSelect = (file: File) => {
                 ) : (
                   <RefreshCw className="mr-1 h-3 w-3" />
                 )}
-                Refresh
+                Refresh Date
+              </Button>
+            )}
+            {canEditDTR() && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRefreshAllDTRs}
+                disabled={isRefreshing}
+                className="text-xs dark:text-gray-300"
+              >
+                Refresh All
               </Button>
             )}
           </div>
@@ -808,7 +819,7 @@ const handleFileSelect = (file: File) => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={handleRefreshDTRs}
+                            onClick={openRefreshRangeDialog}
                             disabled={isRefreshing || isImporting}
                             className="gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 dark:border-gray-600 dark:text-gray-300"
                           >
@@ -817,7 +828,7 @@ const handleFileSelect = (file: File) => {
                             ) : (
                               <RefreshCw className="h-4 w-4" />
                             )}
-                            Refresh DTRs
+                            Refresh Date
                           </Button>
                         )}
                       </div>
@@ -1017,7 +1028,7 @@ const handleFileSelect = (file: File) => {
               {canEditDTR() && (
                 <Button
                   variant="outline"
-                  onClick={handleRefreshDTRs}
+                  onClick={openRefreshRangeDialog}
                   disabled={isRefreshing}
                   className="hover:bg-gray-50 dark:hover:bg-gray-700 dark:border-gray-600 dark:text-gray-300"
                 >
@@ -1026,7 +1037,17 @@ const handleFileSelect = (file: File) => {
                   ) : (
                     <RefreshCw className="mr-2 h-4 w-4" />
                   )}
-                  Refresh DTRs
+                  Refresh Date
+                </Button>
+              )}
+              {canEditDTR() && (
+                <Button
+                  variant="ghost"
+                  onClick={handleRefreshAllDTRs}
+                  disabled={isRefreshing}
+                  className="dark:text-gray-300"
+                >
+                  Refresh All
                 </Button>
               )}
             </div>
@@ -1216,7 +1237,72 @@ const handleFileSelect = (file: File) => {
           </div>
         </div>
         
-              <SingleDTRModal
+      <Dialog open={isRefreshRangeOpen} onOpenChange={setIsRefreshRangeOpen}>
+        <DialogContent className="sm:max-w-md dark:bg-gray-800 dark:border-gray-700">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">Refresh Date Range</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Recalculate unlocked DTR records from raw imports within this date range.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium dark:text-gray-300">Start date</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start dark:border-gray-600 dark:text-gray-200">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(refreshStartDate, "MM/dd/yyyy")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 dark:bg-gray-800 dark:border-gray-700" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={refreshStartDate}
+                    onSelect={(date) => {
+                      if (!date) return;
+                      setRefreshStartDate(date);
+                      if (date > refreshEndDate) setRefreshEndDate(date);
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium dark:text-gray-300">End date</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start dark:border-gray-600 dark:text-gray-200">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(refreshEndDate, "MM/dd/yyyy")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 dark:bg-gray-800 dark:border-gray-700" align="end">
+                  <Calendar
+                    mode="single"
+                    selected={refreshEndDate}
+                    onSelect={(date) => date && setRefreshEndDate(date)}
+                    disabled={(date) => date < refreshStartDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsRefreshRangeOpen(false)} disabled={isRefreshing}>
+              Cancel
+            </Button>
+            <Button onClick={handleRefreshDTRs} disabled={isRefreshing} className="bg-blue-600 hover:bg-blue-700 text-white">
+              {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Refresh Dates
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <SingleDTRModal
         isOpen={isSingleDTRModalOpen}
         onClose={() => setIsSingleDTRModalOpen(false)}
         onImportSuccess={() => {

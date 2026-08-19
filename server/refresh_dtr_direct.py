@@ -1,15 +1,11 @@
 import mysql.connector
 import sys
 import json
-import os
 import time
-import collections
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-# Import shared configuration and database manager
 from config import get_db_config
-from database import Database
 
 # Database configuration - USE DYNAMIC SETTINGS FROM config.json (kept for reference)
 db_config_dict = get_db_config()
@@ -152,302 +148,269 @@ def classify_daily_scans(time_deltas, effective_schedule):
 
     return am_in, am_out, pm_in, pm_out
 
-def get_employee_schedule(db, employee_id):
-    """Get employee's regular schedule"""
-    try:
-        db.execute("""
-            SELECT am_in, am_out, pm_in, pm_out
-            FROM employees
-            WHERE id = %s
-        """, (employee_id,))
-        result = db.fetchone()
-        if result:
-            return result
+def parse_date(value, label):
+    if value in (None, ""):
         return None
-    except Exception as e:
-        print(f"Error getting schedule for employee {employee_id}: {e}")
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d").date()
+    except ValueError as error:
+        raise ValueError(f"Invalid {label}. Use YYYY-MM-DD.") from error
+
+
+def normalize_scope(payload):
+    employee_ids = []
+    for value in payload.get("employee_ids") or []:
+        employee_id = int(value)
+        if employee_id > 0 and employee_id not in employee_ids:
+            employee_ids.append(employee_id)
+
+    start_date = parse_date(payload.get("start_date"), "start date")
+    end_date = parse_date(payload.get("end_date"), "end date")
+    all_history = bool(payload.get("all_history"))
+    dry_run = bool(payload.get("dry_run"))
+
+    if not all_history:
+        if not start_date or not end_date:
+            raise ValueError("Start date and end date are required for a bounded refresh.")
+        if start_date > end_date:
+            raise ValueError("Start date cannot be after end date.")
+
+    return {
+        "employee_ids": employee_ids,
+        "start_date": start_date,
+        "end_date": end_date,
+        "all_history": all_history,
+        "dry_run": dry_run,
+    }
+
+
+def time_value(value):
+    if value is None:
         return None
+    if isinstance(value, timedelta):
+        return timedelta_to_time(value)
+    return value
 
-def get_employee_overrides(db, employee_id):
-    """Get all schedule overrides for an employee as a dictionary keyed by date string"""
-    try:
-        db.execute("""
-            SELECT date, am_in, am_out, pm_in, pm_out
-            FROM employee_schedules
-            WHERE employee_id = %s
-        """, (employee_id,))
-        results = db.fetchall()
-        overrides = {}
-        for r in results:
-            # r[0] is datetime.date, convert to string YYYY-MM-DD
-            date_str = str(r[0])
-            overrides[date_str] = (r[1], r[2], r[3], r[4])
-        return overrides
-    except Exception as e:
-        print(f"Error getting overrides for employee {employee_id}: {e}")
-        return {}
 
-def remove_duplicate_imports(db, employee_id):
-    """Remove duplicate imports for an employee (same employee_id + same minute)"""
-    try:
-        delete_query = """
-            DELETE i1 FROM imports i1
-            INNER JOIN imports i2 
-            WHERE 
-                i1.id < i2.id AND 
-                i1.employee_id = i2.employee_id AND 
-                i1.employee_id = %s AND
-                DATE_FORMAT(i1.created_at, '%Y-%m-%d %H:%i') = DATE_FORMAT(i2.created_at, '%Y-%m-%d %H:%i')
-        """
-        db.execute(delete_query, (employee_id,))
-        # For rowcount, we need to check if the database object supports it
-        # If not, we just print that we attempted the deletion
-        deleted_count = getattr(db.cursor, 'rowcount', 0)
-        if deleted_count > 0:
-            print(f"    Removed {deleted_count} duplicate imports")
-        return deleted_count
-    except Exception as e:
-        print(f"    [ERROR] Failed to remove duplicates: {e}")
-        return 0
+def time_tuple(values):
+    return tuple(time_value(value) for value in values)
 
-def refresh_employee_dtr(db, employee_id):
-    """
-    Refresh DTR for a single employee with SCHEDULE-DEPENDENT logic
-    
-    Key Principle: Assignment depends on whether morning work exists
-    - Morning work exists → Full day or morning half-day
-    - No morning work → Afternoon half-day
-    
-    Features:
-    - Handles all shift types (full day, morning only, afternoon only)
-    - Handles early out and late in scenarios
-    - Multiple scans (human error)
-    - PM_OUT keeps updating to latest scan
-    - Dynamic, schedule-sensitive, no hardcoded patterns
-    """
-    
-    # First remove duplicate imports for this employee
-    remove_duplicate_imports(db, employee_id)
-    
-    # Get employee default schedule
-    default_schedule = get_employee_schedule(db, employee_id)
-    if not default_schedule:
-        print(f"  [WARN] No schedule found for employee {employee_id}")
-        return 0
 
-    # Get all schedule overrides for this employee
-    overrides = get_employee_overrides(db, employee_id)
-    
-    # Get all imports for this employee
-    try:
-        db.execute("""
-            SELECT id, employee_id, created_at
-            FROM imports
-            WHERE employee_id = %s
-            ORDER BY created_at
-        """, (employee_id,))
-        dtrs = db.fetchall()
-        
-        if not dtrs:
-            print(f"  [INFO] No imports found for employee {employee_id}")
-            return 0
-            
-    except Exception as e:
-        print(f"  [ERROR] Failed to fetch imports for employee {employee_id}: {e}", file=sys.stderr)
-        return 0
+def sql_scope(scope, column, params):
+    clauses = []
+    employee_ids = scope["employee_ids"]
+    if employee_ids:
+        clauses.append(f"employee_id IN ({','.join(['%s'] * len(employee_ids))})")
+        params.extend(employee_ids)
+    if not scope["all_history"]:
+        clauses.append(f"{column} >= %s")
+        clauses.append(f"{column} < DATE_ADD(%s, INTERVAL 1 DAY)")
+        params.extend([scope["start_date"], scope["end_date"]])
+    return clauses
 
-    # Group the data by employee_id and date (using defaultdict)
-    sorted_data = collections.defaultdict(lambda: collections.defaultdict(set))
-    
-    for dtr in dtrs:
-        id_val, emp_id, dt = dtr
-        date_str = dt.date()
-        time_str = dt.time()
-        sorted_data[emp_id][date_str].add(time_str)
 
-    # Sort the data and format the output
-    formatted_data = {}
-    for emp_id, date_data in sorted_data.items():
-        emp_data = {}
-        for date, times in date_data.items():
-            emp_data[str(date)] = sorted(times)
-        formatted_data[emp_id] = emp_data
+def refresh_dtr_range(connection, scope):
+    started = time.perf_counter()
+    cursor = connection.cursor()
 
-    records_processed = 0
-    records_skipped_locked = 0
+    import_params = []
+    import_where = sql_scope(scope, "created_at", import_params)
+    import_sql = "SELECT employee_id, created_at FROM imports"
+    if import_where:
+        import_sql += " WHERE " + " AND ".join(import_where)
+    import_sql += " ORDER BY employee_id, created_at"
+    cursor.execute(import_sql, import_params)
+    import_rows = cursor.fetchall()
 
-    # Process each date for this employee
-    for date_str, times in formatted_data.get(employee_id, {}).items():
-        
-        sorted_times = sorted(times)
-        
-        # Convert times to timedelta for easier comparison
-        time_deltas = []
-        for time in sorted_times:
-            td = timedelta(hours=time.hour, minutes=time.minute, seconds=time.second)
-            time_deltas.append(td)
-        
-        # Determine the effective schedule for this specific date
-        if str(date_str) in overrides:
-            effective_schedule = overrides[str(date_str)]
-        else:
-            effective_schedule = default_schedule
+    punches = defaultdict(lambda: defaultdict(set))
+    for employee_id, created_at in import_rows:
+        punches[int(employee_id)][created_at.date()].add(created_at.time())
 
-        am_in, am_out, pm_in, pm_out = classify_daily_scans(time_deltas, effective_schedule)
-        
-        # Convert timedelta back to time objects
-        if am_in:
-            am_in = timedelta_to_time(am_in)
-        if am_out:
-            am_out = timedelta_to_time(am_out)
-        if pm_in:
-            pm_in = timedelta_to_time(pm_in)
-        if pm_out:
-            pm_out = timedelta_to_time(pm_out)
+    employee_ids = sorted(punches)
+    if not employee_ids:
+        cursor.close()
+        return {
+            "success": True,
+            "records_processed": 0,
+            "records_inserted": 0,
+            "records_updated": 0,
+            "records_unchanged": 0,
+            "locked_skipped": 0,
+            "employees_processed": 0,
+            "punches_processed": len(import_rows),
+            "duration_ms": round((time.perf_counter() - started) * 1000),
+        }
 
-        # Check if a DTR with current date exists
-        try:
-            db.execute("""
-                SELECT id, locked
-                FROM dtrs
-                WHERE employee_id = %s AND date = %s
-            """, (employee_id, date_str))
+    placeholders = ",".join(["%s"] * len(employee_ids))
+    cursor.execute(
+        f"SELECT id, am_in, am_out, pm_in, pm_out FROM employees WHERE id IN ({placeholders})",
+        employee_ids,
+    )
+    schedules = {
+        int(row[0]): (row[1], row[2], row[3], row[4])
+        for row in cursor.fetchall()
+    }
 
-            existing = db.fetchone()
+    override_params = list(employee_ids)
+    override_where = [f"employee_id IN ({placeholders})"]
+    if not scope["all_history"]:
+        override_where.extend(["date >= %s", "date <= %s"])
+        override_params.extend([scope["start_date"], scope["end_date"]])
+    cursor.execute(
+        "SELECT employee_id, date, am_in, am_out, pm_in, pm_out "
+        "FROM employee_schedules WHERE " + " AND ".join(override_where),
+        override_params,
+    )
+    overrides = {
+        (int(row[0]), row[1]): (row[2], row[3], row[4], row[5])
+        for row in cursor.fetchall()
+    }
 
-            if existing:
-                dtr_id, locked = existing
-                if not locked:
-                    # OVERWRITE: Update existing record if not locked
-                    db.execute("""
-                        UPDATE dtrs
-                        SET am_in = %s, am_out = %s, pm_in = %s, pm_out = %s, locked = 0
-                        WHERE id = %s
-                    """, (am_in, am_out, pm_in, pm_out, dtr_id))
-                    records_processed += 1
-                else:
-                    # IMPORT PROTECTION: Skip locked records
-                    records_skipped_locked += 1
-            else:
-                # INSERT: Create new record
-                db.execute("""
-                    INSERT INTO dtrs (employee_id, date, am_in, am_out, pm_in, pm_out, locked)
-                    VALUES (%s, %s, %s, %s, %s, %s, 0)
-                """, (employee_id, date_str, am_in, am_out, pm_in, pm_out))
-                records_processed += 1
-                
-        except Exception as e:
-            print(f"    [ERROR] Failed to update DTR: {e}")
+    dtr_params = list(employee_ids)
+    dtr_where = [f"employee_id IN ({placeholders})"]
+    if not scope["all_history"]:
+        dtr_where.extend(["date >= %s", "date <= %s"])
+        dtr_params.extend([scope["start_date"], scope["end_date"]])
+    cursor.execute(
+        "SELECT employee_id, date, am_in, am_out, pm_in, pm_out, COALESCE(locked, 0) "
+        "FROM dtrs WHERE " + " AND ".join(dtr_where),
+        dtr_params,
+    )
+    existing_rows = {
+        (int(row[0]), row[1]): {
+            "times": time_tuple(row[2:6]),
+            "locked": bool(row[6]),
+        }
+        for row in cursor.fetchall()
+    }
+
+    changes = []
+    inserted = 0
+    updated = 0
+    unchanged = 0
+    locked_skipped = 0
+
+    for employee_id, date_punches in punches.items():
+        default_schedule = schedules.get(employee_id)
+        if not default_schedule:
             continue
+        for work_date, raw_times in date_punches.items():
+            effective_schedule = overrides.get((employee_id, work_date), default_schedule)
+            time_deltas = [
+                timedelta(hours=value.hour, minutes=value.minute, seconds=value.second)
+                for value in sorted(raw_times)
+            ]
+            classified = classify_daily_scans(time_deltas, effective_schedule)
+            classified_times = time_tuple(classified)
+            key = (employee_id, work_date)
+            existing = existing_rows.get(key)
 
-    if records_skipped_locked > 0:
-        print(f"  [INFO] Skipped {records_skipped_locked} locked records for employee {employee_id}")
+            if existing and existing["locked"]:
+                locked_skipped += 1
+                continue
+            if existing and existing["times"] == classified_times:
+                unchanged += 1
+                continue
 
-    return records_processed
+            changes.append((employee_id, work_date, *classified_times))
+            if existing:
+                updated += 1
+            else:
+                inserted += 1
+
+    if changes and not scope["dry_run"]:
+        cursor.executemany(
+            """
+            INSERT INTO dtrs (employee_id, date, am_in, am_out, pm_in, pm_out, locked)
+            VALUES (%s, %s, %s, %s, %s, %s, 0) AS incoming
+            ON DUPLICATE KEY UPDATE
+                am_in = IF(COALESCE(dtrs.locked, 0) = 1, dtrs.am_in, incoming.am_in),
+                am_out = IF(COALESCE(dtrs.locked, 0) = 1, dtrs.am_out, incoming.am_out),
+                pm_in = IF(COALESCE(dtrs.locked, 0) = 1, dtrs.pm_in, incoming.pm_in),
+                pm_out = IF(COALESCE(dtrs.locked, 0) = 1, dtrs.pm_out, incoming.pm_out)
+            """,
+            changes,
+        )
+
+    cursor.close()
+    return {
+        "success": True,
+        "records_processed": inserted + updated,
+        "records_inserted": inserted,
+        "records_updated": updated,
+        "records_unchanged": unchanged,
+        "locked_skipped": locked_skipped,
+        "employees_processed": len(employee_ids),
+        "punches_processed": len(import_rows),
+        "duration_ms": round((time.perf_counter() - started) * 1000),
+        "dry_run": scope["dry_run"],
+    }
+
+
+def read_scope_from_cli():
+    if len(sys.argv) > 1 and sys.argv[1] == "--json-input":
+        payload = json.loads(sys.stdin.read() or "{}")
+        return normalize_scope(payload)
+    if len(sys.argv) > 1:
+        return normalize_scope({"employee_ids": [int(sys.argv[1])], "all_history": True})
+    return normalize_scope({"all_history": True})
+
 
 def main():
-    start_time = time.time()
-    employee_id = None
-    
-    if len(sys.argv) > 1:
-        try:
-            # Normalize CLI arg to int so it matches DB integer ids and dict keys.
-            employee_id = int(sys.argv[1])
-        except ValueError:
-            print_status("error", f"Invalid employee id: {sys.argv[1]}")
-            print(json.dumps({
-                'success': False,
-                'error': f'Invalid employee id: {sys.argv[1]}'
-            }))
-            sys.exit(1)
-
+    connection = None
+    lock_acquired = False
     try:
-        print_header("DTR Refresh - Schedule-Dependent Logic")
-        
-        print_status("start", "Connecting to database...")
-        # Use the new Database class with automatic reconnection support
-        db = Database(
-            host=db_config.get('host', '192.168.1.52'),
-            user=db_config.get('user', 'adtr'),
-            password=db_config.get('password', 'adtr'),
-            database=db_config.get('database', 'new_dtr'),
-            port=db_config.get('port', 3306)
+        scope = read_scope_from_cli()
+        connection = mysql.connector.connect(
+            host=db_config.get("host"),
+            user=db_config.get("user"),
+            password=db_config.get("password"),
+            database=db_config.get("database"),
+            port=db_config.get("port", 3306),
+            autocommit=False,
+            connection_timeout=10,
         )
-        print_status("ok", "Database connection successful")
+        lock_cursor = connection.cursor()
+        lock_cursor.execute("SELECT GET_LOCK('muniweb_dtr_refresh', 0)")
+        lock_acquired = lock_cursor.fetchone()[0] == 1
+        lock_cursor.close()
+        if not lock_acquired:
+            print(json.dumps({"success": False, "busy": True, "error": "Another DTR refresh is already running."}))
+            return 2
 
-        if employee_id:
-            # Refresh for one employee
-            print_header(f"Refreshing DTR for Employee {employee_id}")
-            print_status("info", "Processing ALL historical imports for this employee...")
-            
-            records_processed = refresh_employee_dtr(db, employee_id)
-            print_status("ok", f"Refreshed employee ID {employee_id} - {records_processed} records processed")
-            
-            result = {
-                'success': True,
-                'message': f'DTR refreshed for employee {employee_id}',
-                'records_processed': records_processed
-            }
+        result = refresh_dtr_range(connection, scope)
+        if scope["dry_run"]:
+            connection.rollback()
         else:
-            # Refresh for all employees
-            print_header("Refreshing DTR for All Employees")
-            print_status("info", "Processing ALL historical imports for all employees...")
-            
-            db.execute("SELECT id FROM employees")
-            employees = db.fetchall()
-            employee_ids = [emp_id for (emp_id,) in employees]
-            
-            
-            success = 0
-            failed = 0
-            total_records = 0
-
-            for i, emp_id in enumerate(employee_ids, 1):
-                try:
-                    records_processed = refresh_employee_dtr(db, emp_id)
-                    
-                    success += 1
-                    total_records += records_processed
-                except Exception as e:
-                    
-                    failed += 1
-                
-                # Small delay to not overload the database
-                time.sleep(0.01)
-
-            duration = time.time() - start_time
-            print_summary(len(employee_ids), success, failed, duration)
-            
-            result = {
-                'success': True,
-                'message': 'DTR refreshed for all employees',
-                'records_processed': total_records,
-                'employees_processed': len(employee_ids),
-                'success_count': success,
-                'failed_count': failed
-            }
-
-        db.commit()
-        print_status("ok", "Database changes committed")
+            connection.commit()
+        result.update({
+            "message": "DTR refresh completed",
+            "scope": {
+                "employee_ids": scope["employee_ids"],
+                "start_date": str(scope["start_date"]) if scope["start_date"] else None,
+                "end_date": str(scope["end_date"]) if scope["end_date"] else None,
+                "all_history": scope["all_history"],
+                "dry_run": scope["dry_run"],
+            },
+        })
         print(json.dumps(result))
-
-    except Exception as err:
-        error_msg = f"Error: {str(err)}"
-        print_status("error", error_msg)
-        result = {
-            'success': False,
-            'error': error_msg
-        }
-        print(json.dumps(result))
-        sys.exit(1)
-
+        return 0
+    except Exception as error:
+        if connection:
+            connection.rollback()
+        print(json.dumps({"success": False, "error": str(error)}))
+        return 1
     finally:
-        if 'db' in locals():
-            try:
-                db.close()
-                print_status("info", "Database connection closed")
-            except:
-                pass
+        if connection:
+            if lock_acquired:
+                try:
+                    cursor = connection.cursor()
+                    cursor.execute("SELECT RELEASE_LOCK('muniweb_dtr_refresh')")
+                    cursor.close()
+                except Exception:
+                    pass
+            connection.close()
 
-if __name__ == '__main__':
-    main()
+
+if __name__ == "__main__":
+    sys.exit(main())

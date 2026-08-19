@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
-import { CalendarIcon, Upload, Loader2, User, Search, CheckCircle, XCircle, RefreshCw } from "lucide-react";
+import { CalendarIcon, Upload, Loader2, User, Search, CheckCircle, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -166,20 +166,9 @@ const handleFileSelect = (file: File) => {
 
       const result = await api.importSingleDTR(importData);
 
-      toast.success("Single DTR imported successfully", {
-        description: `${result.records_imported} records imported for ${selectedEmployee.name}`
+      toast[result.refresh_success ? "success" : "warning"](result.message, {
+        description: `${result.records_inserted} new punch(es); ${result.duplicates_skipped} duplicate(s) skipped.`
       });
-
-      // Offer to refresh DTR for this employee
-      setTimeout(() => {
-        toast.info("Refresh DTR for this employee?", {
-          description: "Click to update DTR records from imports",
-          action: {
-            label: "Refresh Now",
-            onClick: () => refreshEmployeeDTR(selectedEmployee.employee_id)
-          }
-        });
-      }, 1000);
 
       onImportSuccess?.();
       handleClose();
@@ -191,19 +180,6 @@ const handleFileSelect = (file: File) => {
       });
     } finally {
       setIsImporting(false);
-    }
-  };
-
-  const refreshEmployeeDTR = async (employeeId: number) => {
-    try {
-      await api.refreshDTR(employeeId);
-      toast.success("DTR refreshed successfully", {
-        description: `DTR records updated for employee ${employeeId}`
-      });
-    } catch (error: any) {
-      toast.error("Failed to refresh DTR", {
-        description: error.message || "An error occurred while refreshing"
-      });
     }
   };
 

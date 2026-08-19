@@ -263,7 +263,7 @@ export default function Employees() {
   // Import DTRs for an employee
   const importEmployeeDTRs = async (employeeId: number) => {
     try {
-      await api.refreshDTR(employeeId);
+      await api.refreshDTR({ employeeId, allHistory: true });
       toast.success('DTR records imported successfully');
     } catch (error: any) {
       console.error('Error importing DTRs:', error);

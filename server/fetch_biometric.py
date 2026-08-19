@@ -36,7 +36,7 @@ def get_biometric_from_db(biometric_id):
         print(f"Database error: {str(e)}", file=sys.stderr)
         return None
 
-def fetch_biometric_attendance(biometric_id, start_date=None, end_date=None):
+def fetch_biometric_attendance(biometric_id, start_date=None, end_date=None, employee_id=None):
     """
     Fetch attendance from biometric device
     Uses the ORIGINAL dtr.py logic - attendance.timestamp is used AS-IS
@@ -107,6 +107,8 @@ def fetch_biometric_attendance(biometric_id, start_date=None, end_date=None):
             
             # ORIGINAL LOGIC: employee_number = attendance.user_id
             employee_number = attendance.user_id
+            if employee_id and str(employee_number) != str(employee_id):
+                continue
             
             # Format for JSON output (same data structure as original)
             formatted_date = temp_datetime.strftime('%Y-%m-%d')
@@ -152,10 +154,11 @@ if __name__ == '__main__':
         print(f"Starting biometric fetch: id={biometric_id}, start={start_date}, end={end_date}", file=sys.stderr)
         
         # Fetch attendance
-        attendances = fetch_biometric_attendance(biometric_id, start_date, end_date)
+        employee_id = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else None
+        attendances = fetch_biometric_attendance(biometric_id, start_date, end_date, employee_id)
         
         # Output as JSON (Node.js will read this)
-        print(json.dumps(attendances, indent=2))
+        print(json.dumps(attendances, separators=(',', ':')))
         
         print(f"Biometric fetch completed successfully. Total records: {len(attendances)}", file=sys.stderr)
         

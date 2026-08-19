@@ -170,13 +170,27 @@ async updateEmployee(id: number, employeeData: any) {
   },
 
   // Refresh DTR table
-  async refreshDTR(employeeId?: number) {
+  async refreshDTR(options: {
+    employeeId?: number;
+    startDate?: string;
+    endDate?: string;
+    allHistory?: boolean;
+  }) {
+    const { employeeId, startDate, endDate, allHistory = false } = options;
     const url = employeeId 
       ? `${API_URL}/refresh-dtr/${employeeId}`
       : `${API_URL}/refresh-dtr`;
       
     const response = await fetch(url, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        start_date: startDate,
+        end_date: endDate,
+        all_history: allHistory,
+      }),
     });
     
     if (!response.ok) {

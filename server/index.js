@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 const { spawn } = require('child_process');
+const { normalizeImportRows, insertImportRowsBatch, importRefreshScope } = require('./import_batch');
 const app = express();
 
 
@@ -468,9 +469,13 @@ app.get('/api/attendance/:date', async (req, res) => {
         TIME_FORMAT(d.am_in, '%H:%i') as am_in, 
         TIME_FORMAT(d.am_out, '%H:%i') as am_out, 
         TIME_FORMAT(d.pm_in, '%H:%i') as pm_in, 
-        TIME_FORMAT(d.pm_out, '%H:%i') as pm_out
+        TIME_FORMAT(d.pm_out, '%H:%i') as pm_out,
+        TIME_FORMAT(COALESCE(es.am_in, e.am_in), '%H:%i') as schedule_am_in,
+        TIME_FORMAT(COALESCE(es.pm_in, e.pm_in), '%H:%i') as schedule_pm_in
       FROM dtrs d
       INNER JOIN employees e ON d.employee_id = e.id
+      LEFT JOIN employee_schedules es
+        ON es.employee_id = d.employee_id AND es.date = d.date
       WHERE d.date = ?
       ORDER BY e.id ASC
     `;
@@ -1880,7 +1885,7 @@ function formatTimeForDisplay(time) {
 // ========== IMPORT AND REFRESH ENDPOINTS ==========
 
 // Helper function to call Python biometric script
-async function fetchBiometricAttendance(biometricId, startDate, endDate) {
+async function fetchBiometricAttendance(biometricId, startDate, endDate, employeeId) {
   return new Promise((resolve, reject) => {
     console.log(`Calling Python script for biometric ${biometricId}`);
 
@@ -1888,7 +1893,8 @@ async function fetchBiometricAttendance(biometricId, startDate, endDate) {
       'fetch_biometric.py',
       biometricId.toString(),
       startDate || '',
-      endDate || ''
+      endDate || '',
+      employeeId ? employeeId.toString() : ''
     ]);
 
     let dataString = '';
@@ -1960,11 +1966,68 @@ function parseTimestampToMinute(timestampStr) {
   return timestampStr;
 }
 
+function lastJsonObject(output) {
+  const lines = String(output || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    try {
+      return JSON.parse(lines[index]);
+    } catch {
+      // Keep looking for the final machine-readable result.
+    }
+  }
+  throw new Error('DTR refresh did not return a valid result');
+}
+
+async function runDtrRefresh(scope) {
+  return new Promise((resolve, reject) => {
+    const pythonProcess = spawn('python', ['refresh_dtr_direct.py', '--json-input'], {
+      cwd: __dirname,
+      windowsHide: true
+    });
+    let output = '';
+    let errorOutput = '';
+    pythonProcess.stdout.on('data', data => { output += data.toString(); });
+    pythonProcess.stderr.on('data', data => { errorOutput += data.toString(); });
+    pythonProcess.on('error', reject);
+    pythonProcess.on('close', code => {
+      try {
+        const result = lastJsonObject(output);
+        if (code !== 0 || !result.success) {
+          const error = new Error(result.error || errorOutput || `DTR refresh exited with code ${code}`);
+          error.busy = Boolean(result.busy);
+          reject(error);
+          return;
+        }
+        resolve(result);
+      } catch (error) {
+        reject(new Error(errorOutput || error.message));
+      }
+    });
+    pythonProcess.stdin.end(JSON.stringify(scope));
+  });
+}
+
+async function refreshImportedRange(rows, startDate, endDate) {
+  const startedAt = Date.now();
+  try {
+    const result = await runDtrRefresh(importRefreshScope(rows, startDate, endDate));
+    return { success: true, duration_ms: Date.now() - startedAt, ...result };
+  } catch (error) {
+    return {
+      success: false,
+      duration_ms: Date.now() - startedAt,
+      busy: Boolean(error.busy),
+      error: error.message
+    };
+  }
+}
+
 
 // Biometric import endpoint - FULLY FIXED VERSION
 app.post('/import-dtr', async (req, res) => {
   let connection;
   try {
+    const importStartedAt = Date.now();
     const { source, biometric_id, start_date, end_date } = req.body;
 
     console.log('Import DTR biometric request:', { source, biometric_id, start_date, end_date });
@@ -1997,12 +2060,14 @@ app.post('/import-dtr', async (req, res) => {
 
     // Call Python script to get attendance
     let attendances;
+    const deviceFetchStartedAt = Date.now();
     try {
       attendances = await fetchBiometricAttendance(biometric_id, start_date, end_date);
     } catch (error) {
       console.error('Python script error:', error);
       throw new Error(`Failed to fetch biometric data: ${error.message}`);
     }
+    const deviceFetchMs = Date.now() - deviceFetchStartedAt;
 
     const dtrs = [];
 
@@ -2024,23 +2089,13 @@ app.post('/import-dtr', async (req, res) => {
       // FIXED: Truncate to minute level (removes seconds) - matches Python's deduplication
       const created_at = parseTimestampToMinute(timestampStr);
 
-      console.log(`Processing: Employee ${employeeId} at ${created_at}`);
-
       dtrs.push({
         employee_id: employeeId.toString(),
         created_at: created_at
       });
     }
 
-    // FIXED: Remove duplicates (now at minute level like Python)
-    const uniqueDtrs = Array.from(new Set(dtrs.map(d => JSON.stringify(d)))).map(d => JSON.parse(d));
-
-    // FIXED: Sort by datetime before inserting (matches Python)
-    uniqueDtrs.sort((a, b) => {
-      const dateA = new Date(a.created_at);
-      const dateB = new Date(b.created_at);
-      return dateA - dateB;
-    });
+    const uniqueDtrs = normalizeImportRows(dtrs);
 
     console.log(`Importing ${uniqueDtrs.length} unique DTR records from biometric (sorted chronologically)`);
 
@@ -2048,20 +2103,8 @@ app.post('/import-dtr', async (req, res) => {
       throw new Error('No attendance records found in the specified date range');
     }
 
-    // Insert into imports table in sorted order
-    for (const dtr of uniqueDtrs) {
-      try {
-        await connection.query(
-          'INSERT INTO imports (employee_id, created_at) VALUES (?, ?) ON DUPLICATE KEY UPDATE created_at = created_at',
-          [dtr.employee_id, dtr.created_at]
-        );
-      } catch (insertError) {
-        // Skip if duplicate key error (already exists)
-        if (insertError.code !== 'ER_DUP_ENTRY') {
-          throw insertError;
-        }
-      }
-    }
+    const dbInsertStartedAt = Date.now();
+    const recordsInserted = await insertImportRowsBatch(connection, uniqueDtrs);
 
     // Add log entry
     await connection.query(
@@ -2070,15 +2113,35 @@ app.post('/import-dtr', async (req, res) => {
     );
 
     await connection.commit();
+    const dbInsertMs = Date.now() - dbInsertStartedAt;
+    connection.release();
+    connection = null;
+
+    const refresh = await refreshImportedRange(uniqueDtrs, start_date, end_date);
 
     res.json({
-      message: 'DTR imported successfully from biometric device',
+      message: refresh.success
+        ? 'DTR imported and refreshed successfully from biometric device'
+        : 'DTR imported, but the automatic refresh needs attention',
       source: 'biometric',
       origin,
-      records_imported: uniqueDtrs.length,
+      import_success: true,
+      refresh_success: refresh.success,
+      records_received: dtrs.length,
+      records_imported: recordsInserted,
+      records_inserted: recordsInserted,
+      duplicates_skipped: Math.max(0, dtrs.length - recordsInserted),
+      dtr_days_refreshed: Number(refresh.records_processed || 0),
+      locked_skipped: Number(refresh.locked_skipped || 0),
       start_date: start_date,
       end_date: end_date,
-      note: 'Records deduplicated at minute level and sorted chronologically'
+      refresh,
+      timings: {
+        device_fetch_ms: deviceFetchMs,
+        db_insert_ms: dbInsertMs,
+        refresh_ms: Number(refresh.duration_ms || 0),
+        total_ms: Date.now() - importStartedAt
+      }
     });
 
   } catch (error) {
@@ -2165,6 +2228,7 @@ function isDateInRange(dateStr, startDate, endDate) {
 app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
   let connection;
   try {
+    const importStartedAt = Date.now();
     const { start_date, end_date } = req.body;
     const file = req.file;
 
@@ -2320,7 +2384,7 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
       fs.unlinkSync(file.path);
     }
 
-    const uniqueDtrs = Array.from(new Set(dtrs.map(d => JSON.stringify(d)))).map(d => JSON.parse(d));
+    const uniqueDtrs = normalizeImportRows(dtrs);
 
     console.log(`Importing ${uniqueDtrs.length} unique DTR records from file`);
 
@@ -2328,13 +2392,8 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
       throw new Error('No valid DTR records found in file');
     }
 
-    // Insert into imports table
-    for (const dtr of uniqueDtrs) {
-      await connection.query(
-        'INSERT INTO imports (employee_id, created_at) VALUES (?, ?)',
-        [dtr.employee_id, dtr.created_at]
-      );
-    }
+    const dbInsertStartedAt = Date.now();
+    const recordsInserted = await insertImportRowsBatch(connection, uniqueDtrs);
 
     // Add log entry
     await connection.query(
@@ -2343,15 +2402,35 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
     );
 
     await connection.commit();
+    const dbInsertMs = Date.now() - dbInsertStartedAt;
+    connection.release();
+    connection = null;
+
+    const refresh = await refreshImportedRange(uniqueDtrs, start_date, end_date);
 
     res.json({
-      message: 'DTR imported successfully',
+      message: refresh.success
+        ? 'DTR imported and refreshed successfully'
+        : 'DTR imported, but the automatic refresh needs attention',
       source: 'file',
       file_type: fileExtension,
       origin,
-      records_imported: uniqueDtrs.length,
+      import_success: true,
+      refresh_success: refresh.success,
+      records_received: dtrs.length,
+      records_imported: recordsInserted,
+      records_inserted: recordsInserted,
+      duplicates_skipped: Math.max(0, dtrs.length - recordsInserted),
+      dtr_days_refreshed: Number(refresh.records_processed || 0),
+      locked_skipped: Number(refresh.locked_skipped || 0),
       start_date: start_date,
-      end_date: end_date
+      end_date: end_date,
+      refresh,
+      timings: {
+        db_insert_ms: dbInsertMs,
+        refresh_ms: Number(refresh.duration_ms || 0),
+        total_ms: Date.now() - importStartedAt
+      }
     });
 
   } catch (error) {
@@ -2373,80 +2452,15 @@ app.post('/import-dtr-file', upload.single('file'), async (req, res) => {
 // Refresh DTR using Python (all employees)
 app.post('/refresh-dtr', async (req, res) => {
   try {
-    console.log('Starting DTR refresh via Python (direct)...');
-
-    const pythonProcess = spawn('python', ['refresh_dtr_direct.py']);
-
-    let output = '';
-    let errorOutput = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      output += data.toString();
-      console.log('Python stdout:', data.toString());
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-      console.error('Python stderr:', data.toString());
-    });
-
-    pythonProcess.on('close', (code) => {
-      console.log(`Python process exited with code: ${code}`);
-
-      if (code !== 0) {
-        console.error('Python script failed with code:', code);
-        console.error('Python stderr output:', errorOutput);
-        return res.status(500).json({
-          message: 'Failed to refresh DTR',
-          error: errorOutput || `Python script exited with code ${code}`,
-          output: output
-        });
-      }
-
-      try {
-        // Try to parse the last line as JSON (in case there are print statements)
-        const lines = output.split('\n');
-        let jsonLine = '';
-        for (let i = lines.length - 1; i >= 0; i--) {
-          if (lines[i].trim().startsWith('{') && lines[i].trim().endsWith('}')) {
-            jsonLine = lines[i].trim();
-            break;
-          }
-        }
-
-        if (!jsonLine) {
-          jsonLine = output.trim();
-        }
-
-        const result = JSON.parse(jsonLine);
-
-        if (result.success) {
-          res.json({
-            message: result.message,
-            records_processed: result.records_processed,
-            refreshed_via: 'python_direct'
-          });
-        } else {
-          res.status(500).json({
-            message: 'DTR refresh failed',
-            error: result.error
-          });
-        }
-      } catch (parseError) {
-        console.error('Error parsing Python output:', parseError);
-        console.error('Raw Python output:', output);
-        res.status(500).json({
-          message: 'Error processing refresh result',
-          error: parseError.message,
-          raw_output: output,
-          stderr: errorOutput
-        });
-      }
-    });
-
+    const { start_date, end_date, all_history = false } = req.body || {};
+    if (!all_history && (!start_date || !end_date)) {
+      return res.status(400).json({ message: 'start_date and end_date are required for a bounded refresh' });
+    }
+    const result = await runDtrRefresh({ start_date, end_date, all_history: Boolean(all_history) });
+    res.json({ ...result, refreshed_via: 'python_direct' });
   } catch (error) {
     console.error('Error in /refresh-dtr:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.busy ? 409 : 500).json({ message: error.message, busy: Boolean(error.busy) });
   }
 });
 
@@ -2454,83 +2468,20 @@ app.post('/refresh-dtr', async (req, res) => {
 app.post('/refresh-dtr/:employeeId', async (req, res) => {
   try {
     const { employeeId } = req.params;
-
-    console.log(`Starting DTR refresh for employee ${employeeId} via Python (direct)...`);
-
-    const pythonProcess = spawn('python', ['refresh_dtr_direct.py', employeeId]);
-
-    let output = '';
-    let errorOutput = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      output += data.toString();
-      console.log('Python stdout:', data.toString());
+    const { start_date, end_date, all_history = false } = req.body || {};
+    if (!all_history && (!start_date || !end_date)) {
+      return res.status(400).json({ message: 'start_date and end_date are required for a bounded refresh' });
+    }
+    const result = await runDtrRefresh({
+      employee_ids: [String(employeeId)],
+      start_date,
+      end_date,
+      all_history: Boolean(all_history)
     });
-
-    pythonProcess.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-      console.error('Python stderr:', data.toString());
-    });
-
-    pythonProcess.on('close', (code) => {
-      console.log(`Python process exited with code: ${code}`);
-
-      if (code !== 0) {
-        console.error('Python script failed with code:', code);
-        console.error('Python stderr output:', errorOutput);
-        return res.status(500).json({
-          message: 'Failed to refresh DTR',
-          error: errorOutput || `Python script exited with code ${code}`,
-          output: output
-        });
-      }
-
-      try {
-        // Try to parse the last line as JSON
-        const lines = output.split('\n');
-        let jsonLine = '';
-        for (let i = lines.length - 1; i >= 0; i--) {
-          if (lines[i].trim().startsWith('{') && lines[i].trim().endsWith('}')) {
-            jsonLine = lines[i].trim();
-            break;
-          }
-        }
-
-        if (!jsonLine) {
-          jsonLine = output.trim();
-        }
-
-        const result = JSON.parse(jsonLine);
-
-        if (result.success) {
-          res.json({
-            message: result.message,
-            employee_id: employeeId,
-            records_processed: result.records_processed,
-            refreshed_via: 'python_direct'
-          });
-        } else {
-          res.status(500).json({
-            message: 'DTR refresh failed',
-            error: result.error,
-            employee_id: employeeId
-          });
-        }
-      } catch (parseError) {
-        console.error('Error parsing Python output:', parseError);
-        console.error('Raw Python output:', output);
-        res.status(500).json({
-          message: 'Error processing refresh result',
-          error: parseError.message,
-          raw_output: output,
-          stderr: errorOutput
-        });
-      }
-    });
-
+    res.json({ ...result, employee_id: employeeId, refreshed_via: 'python_direct' });
   } catch (error) {
     console.error('Error in /refresh-dtr/:employeeId:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.busy ? 409 : 500).json({ message: error.message, busy: Boolean(error.busy) });
   }
 });
 
@@ -3580,6 +3531,7 @@ app.delete('/api/admins/:id', async (req, res) => {
 app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
   let connection;
   try {
+    const importStartedAt = Date.now();
     const { source, biometric_id, employee_id, start_date, end_date } = req.body;
     const file = req.file;
 
@@ -3623,7 +3575,7 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
 
       let attendances;
       try {
-        attendances = await fetchBiometricAttendance(biometric_id, start_date, end_date);
+        attendances = await fetchBiometricAttendance(biometric_id, start_date, end_date, employee_id);
       } catch (error) {
         throw new Error(`Failed to fetch biometric data: ${error.message}`);
       }
@@ -3812,7 +3764,7 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
       throw new Error('Invalid source. Use "biometric" or "file"');
     }
 
-    const uniqueDtrs = Array.from(new Set(dtrs.map(d => JSON.stringify(d)))).map(d => JSON.parse(d));
+    const uniqueDtrs = normalizeImportRows(dtrs);
 
     console.log(`Importing ${uniqueDtrs.length} unique DTR records for employee ${employee_id}`);
 
@@ -3820,12 +3772,8 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
       throw new Error('No DTR records found for the specified employee in the date range');
     }
 
-    for (const dtr of uniqueDtrs) {
-      await connection.query(
-        'INSERT INTO imports (employee_id, created_at) VALUES (?, ?)',
-        [dtr.employee_id, dtr.created_at]
-      );
-    }
+    const dbInsertStartedAt = Date.now();
+    const recordsInserted = await insertImportRowsBatch(connection, uniqueDtrs);
 
     await connection.query(
       'INSERT INTO logs (admin_id, action, category, original, updated) VALUES (?, ?, ?, ?, ?)',
@@ -3833,16 +3781,36 @@ app.post('/import-single-dtr', upload.single('file'), async (req, res) => {
     );
 
     await connection.commit();
+    const dbInsertMs = Date.now() - dbInsertStartedAt;
+    connection.release();
+    connection = null;
+
+    const refresh = await refreshImportedRange(uniqueDtrs, start_date, end_date);
 
     res.json({
-      message: `DTR imported successfully for employee ${employee_id}`,
+      message: refresh.success
+        ? `DTR imported and refreshed successfully for employee ${employee_id}`
+        : `DTR imported for employee ${employee_id}, but the automatic refresh needs attention`,
       source: source,
       file_type: source === 'file' ? file.originalname.split('.').pop() : 'biometric',
       origin,
       employee_id: employee_id,
-      records_imported: uniqueDtrs.length,
+      import_success: true,
+      refresh_success: refresh.success,
+      records_received: dtrs.length,
+      records_imported: recordsInserted,
+      records_inserted: recordsInserted,
+      duplicates_skipped: Math.max(0, dtrs.length - recordsInserted),
+      dtr_days_refreshed: Number(refresh.records_processed || 0),
+      locked_skipped: Number(refresh.locked_skipped || 0),
       start_date: start_date,
-      end_date: end_date
+      end_date: end_date,
+      refresh,
+      timings: {
+        db_insert_ms: dbInsertMs,
+        refresh_ms: Number(refresh.duration_ms || 0),
+        total_ms: Date.now() - importStartedAt
+      }
     });
 
   } catch (error) {
