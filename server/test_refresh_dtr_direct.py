@@ -55,11 +55,48 @@ class ClassifyDailyScansTests(unittest.TestCase):
             ("08:00", "12:01", "13:10", "18:06"),
         )
 
+    def test_early_am_out_before_lunch_punch_uses_separate_slots(self):
+        self.assert_slots(
+            self.classify(("07:05", "11:56", "12:58", "18:02")),
+            ("07:05", "11:56", "12:58", "18:02"),
+        )
+
+    def test_full_ordered_pattern_allows_early_am_out(self):
+        self.assert_slots(
+            self.classify(("07:05", "10:56", "12:58", "18:02")),
+            ("07:05", "10:56", "12:58", "18:02"),
+        )
+
+    def test_nearby_duplicate_scans_do_not_fill_extra_slots(self):
+        self.assert_slots(
+            self.classify(("07:05", "07:07", "10:56", "12:58", "18:02")),
+            ("07:05", "10:56", "12:58", "18:02"),
+        )
+
+    def test_missing_am_in_before_noon_out_keeps_undertime_visible(self):
+        self.assert_slots(
+            self.classify(("11:59", "13:00", "17:00")),
+            (None, "11:59", "13:00", "17:00"),
+        )
+
+    def test_morning_only_early_out_keeps_am_in_and_am_out(self):
+        self.assert_slots(
+            self.classify(("08:00", "11:59")),
+            ("08:00", "11:59", None, None),
+        )
+
     def test_effective_schedule_boundaries_are_used(self):
         custom_schedule = tuple(map(minutes, ("07:30", "11:30", "12:30", "16:30")))
         self.assert_slots(
             self.classify(("11:31", "12:40", "17:30"), custom_schedule),
             (None, "11:31", "12:40", "17:30"),
+        )
+
+    def test_before_custom_noon_out_maps_to_am_out(self):
+        custom_schedule = tuple(map(minutes, ("07:30", "11:30", "12:30", "16:30")))
+        self.assert_slots(
+            self.classify(("11:29", "12:30", "16:30"), custom_schedule),
+            (None, "11:29", "12:30", "16:30"),
         )
 
 

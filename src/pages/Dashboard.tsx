@@ -23,9 +23,9 @@ interface BiometricDevice {
   active: boolean;
 }
 
-// Helper function to format tardiness minutes to readable format
-const formatTardiness = (minutes: number | null) => {
-  if (minutes === null || minutes === 0) return "—";
+// Helper function to format attendance deduction minutes to readable format
+const formatDeduction = (minutes: number | null | undefined) => {
+  if (!minutes || minutes <= 0) return "—";
   
   if (minutes < 60) {
     return `${minutes}m`;
@@ -36,13 +36,17 @@ const formatTardiness = (minutes: number | null) => {
   }
 };
 
-// Helper function to get tardiness color class
-const getTardinessColor = (minutes: number | null) => {
-  if (minutes === null || minutes === 0) return "text-green-600 dark:text-green-400";
+const formatTardiness = formatDeduction;
+
+// Helper function to get attendance deduction color class
+const getDeductionColor = (minutes: number | null | undefined) => {
+  if (!minutes || minutes <= 0) return "text-green-600 dark:text-green-400";
   if (minutes <= 30) return "text-yellow-600 dark:text-yellow-400";
   if (minutes <= 60) return "text-orange-600 dark:text-orange-400";
   return "text-red-600 dark:text-red-400";
 };
+
+const getTardinessColor = getDeductionColor;
 
 export default function Dashboard() {
   const { canImport, canExport, canUpdate, canEditDTR } = useAuth();
@@ -103,7 +107,8 @@ export default function Dashboard() {
       
       const attendanceWithTardiness = data.map((record: any) => ({
         ...record,
-        tardiness: calculateTardinessForDay(record)
+        tardiness: calculateTardinessForDay(record),
+        undertime: calculateUndertimeForDay(record)
       }));
       
       setAttendance(attendanceWithTardiness);
@@ -142,6 +147,31 @@ export default function Dashboard() {
     }
     
     return totalTardiness > 0 ? totalTardiness : null;
+  };
+
+  // Helper function to calculate undertime for a single day
+  const calculateUndertimeForDay = (attendanceRecord: any) => {
+    let totalUndertime = 0;
+
+    const timeToMinutes = (timeStr: string) => {
+      if (!timeStr) return 0;
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+
+    if (attendanceRecord.schedule_am_out && attendanceRecord.am_out) {
+      const scheduledAM = timeToMinutes(attendanceRecord.schedule_am_out);
+      const actualAM = timeToMinutes(attendanceRecord.am_out);
+      totalUndertime += Math.max(0, scheduledAM - actualAM);
+    }
+
+    if (attendanceRecord.schedule_pm_out && attendanceRecord.pm_out) {
+      const scheduledPM = timeToMinutes(attendanceRecord.schedule_pm_out);
+      const actualPM = timeToMinutes(attendanceRecord.pm_out);
+      totalUndertime += Math.max(0, scheduledPM - actualPM);
+    }
+
+    return totalUndertime > 0 ? totalUndertime : null;
   };
 
   const fetchBiometricDevices = async () => {
@@ -374,7 +404,7 @@ const handleFileSelect = (file: File) => {
       { key: "am_out", label: "AM Out", showOnMobile: false, priority: 4 },
       { key: "pm_in", label: "PM In", showOnMobile: false, priority: 3 },
       { key: "pm_out", label: "PM Out", showOnMobile: false, priority: 4 },
-      { key: "tardiness", label: "Tardiness", showOnMobile: true, priority: 1 },
+      { key: "tardiness", label: "Tardy / Under", showOnMobile: true, priority: 1 },
     ];
 
     // For mobile, only show priority 1 columns
@@ -442,9 +472,14 @@ const handleFileSelect = (file: File) => {
           <h3 className="font-semibold text-sm text-gray-900 dark:text-white truncate">{record.name}</h3>
           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{record.office}</p>
         </div>
-        <div className={`flex items-center gap-1 text-xs font-medium ${getTardinessColor(record.tardiness)}`}>
-          {record.tardiness !== null && <Clock className="h-3 w-3" />}
-          {formatTardiness(record.tardiness)}
+        <div className="flex flex-col items-end gap-0.5 text-xs font-medium">
+          <div className={`flex items-center gap-1 ${getTardinessColor(record.tardiness)}`}>
+            {!!record.tardiness && <Clock className="h-3 w-3" />}
+            T: {formatTardiness(record.tardiness)}
+          </div>
+          <div className={getDeductionColor(record.undertime)}>
+            U: {formatDeduction(record.undertime)}
+          </div>
         </div>
       </div>
       
@@ -1226,9 +1261,14 @@ const handleFileSelect = (file: File) => {
                   <td className="px-6 py-4 text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{record.pm_in || "—"}</td>
                   <td className="px-6 py-4 text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{record.pm_out || "—"}</td>
                   <td className="px-6 py-4 text-sm">
-                    <div className={`flex items-center gap-1 font-medium ${getTardinessColor(record.tardiness)} group-hover:scale-105 transition-transform duration-300`}>
-                      {record.tardiness !== null && <Clock className="h-3 w-3" />}
-                      {formatTardiness(record.tardiness)}
+                    <div className="flex flex-col gap-1 font-medium group-hover:scale-105 transition-transform duration-300">
+                      <div className={`flex items-center gap-1 ${getTardinessColor(record.tardiness)}`}>
+                        {!!record.tardiness && <Clock className="h-3 w-3" />}
+                        T: {formatTardiness(record.tardiness)}
+                      </div>
+                      <div className={getDeductionColor(record.undertime)}>
+                        U: {formatDeduction(record.undertime)}
+                      </div>
                     </div>
                   </td>
                 </tr>

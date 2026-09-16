@@ -471,7 +471,9 @@ app.get('/api/attendance/:date', async (req, res) => {
         TIME_FORMAT(d.pm_in, '%H:%i') as pm_in, 
         TIME_FORMAT(d.pm_out, '%H:%i') as pm_out,
         TIME_FORMAT(COALESCE(es.am_in, e.am_in), '%H:%i') as schedule_am_in,
-        TIME_FORMAT(COALESCE(es.pm_in, e.pm_in), '%H:%i') as schedule_pm_in
+        TIME_FORMAT(COALESCE(es.am_out, e.am_out), '%H:%i') as schedule_am_out,
+        TIME_FORMAT(COALESCE(es.pm_in, e.pm_in), '%H:%i') as schedule_pm_in,
+        TIME_FORMAT(COALESCE(es.pm_out, e.pm_out), '%H:%i') as schedule_pm_out
       FROM dtrs d
       INNER JOIN employees e ON d.employee_id = e.id
       LEFT JOIN employee_schedules es
@@ -983,6 +985,47 @@ function calculateTardiness(record, employeeSchedule, shiftType) {
   return tardinessMinutes > 0 ? tardinessMinutes : null;
 }
 
+function calculateUndertime(record, employeeSchedule, shiftType) {
+  if (!record || !employeeSchedule) return null;
+
+  let undertimeMinutes = 0;
+
+  function calculateSingleUndertime(scheduledTime, actualTime) {
+    if (!scheduledTime || !actualTime || actualTime === '00:00:00' || actualTime === '00:00') {
+      return 0;
+    }
+
+    const scheduledMinutes = timeToMinutes(scheduledTime);
+    const actualMinutes = timeToMinutes(actualTime);
+    const earlyOut = scheduledMinutes - actualMinutes;
+
+    return earlyOut > 0 ? earlyOut : 0;
+  }
+
+  switch (shiftType) {
+    case 'morning':
+      undertimeMinutes += calculateSingleUndertime(employeeSchedule.am_out, record.am_out);
+      undertimeMinutes += calculateSingleUndertime(employeeSchedule.pm_out, record.pm_out);
+      break;
+
+    case 'mid':
+      undertimeMinutes += calculateSingleUndertime(employeeSchedule.pm_out, record.pm_out);
+      if (!record.pm_out) {
+        undertimeMinutes += calculateSingleUndertime(employeeSchedule.am_out, record.am_out);
+      }
+      break;
+
+    case 'night':
+      undertimeMinutes += calculateSingleUndertime(employeeSchedule.pm_out, record.am_out);
+      break;
+
+    default:
+      return null;
+  }
+
+  return undertimeMinutes > 0 ? undertimeMinutes : null;
+}
+
 // Helper function to convert time string to minutes
 function timeToMinutes(timeStr) {
   if (!timeStr) return 0;
@@ -1075,6 +1118,7 @@ app.get('/api/dtr/:employeeId', async (req, res) => {
         const activeShiftType = overridesByDate[recordDateStr] ? detectShiftTypeFromSchedule(activeSchedule) : defaultShiftType;
 
         const tardinessMinutes = calculateTardiness(record, activeSchedule, activeShiftType);
+        const undertimeMinutes = calculateUndertime(record, activeSchedule, activeShiftType);
 
         return {
           ...record,
@@ -1083,6 +1127,7 @@ app.get('/api/dtr/:employeeId', async (req, res) => {
           pm_in: formatTimeForDisplay(record.pm_in),
           pm_out: formatTimeForDisplay(record.pm_out),
           tardiness: tardinessMinutes,
+          undertime: undertimeMinutes,
           is_override: !!overridesByDate[recordDateStr]
         };
       });

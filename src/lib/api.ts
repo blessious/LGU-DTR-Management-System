@@ -1,5 +1,5 @@
 // lib/api.ts
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { API_URL } from './apiBase';
 
 export const api = {
   // Get DTR records for employee

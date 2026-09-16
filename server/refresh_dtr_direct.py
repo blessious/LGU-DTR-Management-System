@@ -4,6 +4,7 @@ import json
 import time
 from datetime import datetime, timedelta
 from collections import defaultdict
+from itertools import combinations
 
 from config import get_db_config
 
@@ -51,102 +52,49 @@ def timedelta_to_time(delta):
 
 
 def classify_daily_scans(time_deltas, effective_schedule):
-    """Classify one day's ordered punches without reading or writing the database."""
-    regular_am_in, regular_am_out, regular_pm_in, regular_pm_out = effective_schedule
+    """Assign raw punches to ordered schedule slots without rigid time buckets."""
+    schedule_slots = tuple(effective_schedule)
+    duplicate_window = timedelta(minutes=5)
+    scan_groups = []
 
-    lunch_start = regular_am_out
-    lunch_end = regular_pm_in
-
-    morning_scans = []
-    lunch_scans = []
-    afternoon_scans = []
-
-    for scan in sorted(time_deltas):
-        if scan < lunch_start:
-            morning_scans.append(scan)
-        elif scan < lunch_end:
-            lunch_scans.append(scan)
+    for scan in sorted(set(time_deltas)):
+        if scan_groups and scan - scan_groups[-1][-1] <= duplicate_window:
+            scan_groups[-1].append(scan)
         else:
-            afternoon_scans.append(scan)
+            scan_groups.append([scan])
 
-    has_morning_work = bool(morning_scans)
-    has_afternoon_work = bool(lunch_scans or afternoon_scans)
+    # Nearby repeated device scans represent one punch, not separate DTR slots.
+    scans = [group[0] for group in scan_groups]
+    if not scans:
+        return None, None, None, None
 
-    am_in = None
-    am_out = None
-    pm_in = None
-    pm_out = None
+    # A lunch-window-only record is ambiguous. Preserve the established
+    # afternoon interpretation instead of creating an unsupported AM-out.
+    if len(scans) <= 2 and schedule_slots[1] <= scans[0] < schedule_slots[2]:
+        slots = [None, None, scans[0], scans[1] if len(scans) == 2 else None]
+        return tuple(slots)
 
-    if has_morning_work:
-        am_in = morning_scans[0]
+    match_count = min(len(scans), len(schedule_slots))
+    best_match = None
+    best_cost = None
 
-        if lunch_scans:
-            am_out = lunch_scans[0]
-        elif len(morning_scans) > 1:
-            for scan in reversed(morning_scans):
-                if scan - am_in > timedelta(minutes=1):
-                    am_out = scan
-                    break
+    # Choose the chronologically ordered scans and slots with the smallest
+    # total distance from the employee's effective scheduled times.
+    for scan_indexes in combinations(range(len(scans)), match_count):
+        for slot_indexes in combinations(range(len(schedule_slots)), match_count):
+            cost = sum(
+                abs((scans[scan_index] - schedule_slots[slot_index]).total_seconds())
+                for scan_index, slot_index in zip(scan_indexes, slot_indexes)
+            )
+            if best_cost is None or cost < best_cost:
+                best_cost = cost
+                best_match = tuple(zip(scan_indexes, slot_indexes))
 
-    if has_afternoon_work:
-        if has_morning_work:
-            if len(lunch_scans) > 1:
-                pm_in = lunch_scans[-1]
-            elif len(afternoon_scans) > 1:
-                pm_in = afternoon_scans[0]
-            elif len(afternoon_scans) == 1:
-                single_afternoon = afternoon_scans[0]
-                distance_to_in = abs((single_afternoon - regular_pm_in).total_seconds())
-                distance_to_out = abs((single_afternoon - regular_pm_out).total_seconds())
+    slots = [None] * len(schedule_slots)
+    for scan_index, slot_index in best_match:
+        slots[slot_index] = scans[scan_index]
 
-                if distance_to_in < distance_to_out:
-                    pm_in = single_afternoon
-                else:
-                    pm_out = single_afternoon
-        else:
-            # A lunch-window punch followed by distinct PM in/out punches is
-            # clear evidence of a missing AM in, not an afternoon-only arrival.
-            if len(lunch_scans) == 1 and len(afternoon_scans) >= 2:
-                am_out = lunch_scans[0]
-                pm_in = afternoon_scans[0]
-                pm_out = afternoon_scans[-1]
-            elif len(lunch_scans) > 1:
-                am_out = lunch_scans[0]
-                pm_in = lunch_scans[-1]
-            elif len(lunch_scans) == 1:
-                pm_in = lunch_scans[0]
-            elif len(afternoon_scans) > 1:
-                pm_in = afternoon_scans[0]
-                pm_out = afternoon_scans[-1]
-            elif len(afternoon_scans) == 1:
-                single_afternoon = afternoon_scans[0]
-                distance_to_in = abs((single_afternoon - regular_pm_in).total_seconds())
-                distance_to_out = abs((single_afternoon - regular_pm_out).total_seconds())
-                max_reasonable_distance = 4 * 3600
-
-                if distance_to_in > max_reasonable_distance and distance_to_out > max_reasonable_distance:
-                    pm_out = single_afternoon
-                elif distance_to_in < distance_to_out:
-                    pm_in = single_afternoon
-                else:
-                    pm_out = single_afternoon
-
-        if afternoon_scans and pm_in and not pm_out:
-            for scan in afternoon_scans:
-                if scan > pm_in:
-                    pm_out = scan
-        elif afternoon_scans and not pm_in and len(afternoon_scans) > 1:
-            pm_out = afternoon_scans[-1]
-
-    if am_in and am_out and am_out - am_in <= timedelta(minutes=1):
-        am_out = None
-
-    if pm_in and pm_out and pm_in == pm_out:
-        total_scans = len(morning_scans) + len(lunch_scans) + len(afternoon_scans)
-        if total_scans > 1:
-            pm_out = None
-
-    return am_in, am_out, pm_in, pm_out
+    return tuple(slots)
 
 def parse_date(value, label):
     if value in (None, ""):

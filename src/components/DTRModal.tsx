@@ -21,6 +21,7 @@ interface DTRRecord {
   pm_out: string;
   locked: boolean;
   tardiness?: number;
+  undertime?: number;
 }
 
 interface Employee {
@@ -108,6 +109,8 @@ const formatTardiness = (minutes: number | null | undefined) => {
     return `${hours} hr ${remainingMinutes} min`;
   }
 };
+
+const formatTimeLoss = (minutes: number | null | undefined) => formatTardiness(minutes);
 
 
 // Helper function to detect shift type based on employee schedule
@@ -481,6 +484,35 @@ export default function DTRModal({ isOpen, onClose, employee }: DTRModalProps) {
       toast.error(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExcelDownload = async () => {
+    if (!previewData?.excelUrl) return;
+
+    try {
+      const response = await fetch(previewData.excelUrl);
+
+      if (!response.ok) {
+        throw new Error('Failed to download Excel file');
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const employeeName = previewData.employee.name
+        .replace(/[\\/:*?"<>|]+/g, '')
+        .replace(/\s+/g, '_');
+
+      link.href = downloadUrl;
+      link.download = `DTR_${employeeName}_${previewData.first_period.month}_${previewData.first_period.year}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+    } catch (error) {
+      console.error('Excel download failed:', error);
+      toast.error('Could not download the Excel file. Please try Open in New Tab.');
     }
   };
 
@@ -917,9 +949,9 @@ export default function DTRModal({ isOpen, onClose, employee }: DTRModalProps) {
                       <th className="px-4 py-3 text-center text-sm font-medium min-w-[140px] dark:text-white">{headers.timeOut}</th>
                       <th className="px-4 py-3 text-center text-sm font-medium min-w-[140px] dark:text-white">{headers.timeIn2}</th>
                       <th className="px-4 py-3 text-center text-sm font-medium min-w-[140px] dark:text-white">{headers.timeOut2}</th>
-                      {/* Show "Tardiness" in view mode, "Protected" in edit mode */}
+                      {/* Show attendance deductions in view mode, "Protected" in edit mode */}
                       <th className="px-4 py-3 text-center text-sm font-medium min-w-[120px] dark:text-white">
-                        {isEditing ? "Protected" : "Tardiness"}
+                        {isEditing ? "Protected" : "Tardy / Under"}
                       </th>
                       {/* Add Delete column header in edit mode */}
                       {isEditing && (
@@ -1325,7 +1357,7 @@ export default function DTRModal({ isOpen, onClose, employee }: DTRModalProps) {
                               </>
                             )}
 
-                            {/* Last Column: Tardiness in view mode, Protected (locked checkbox) in edit mode */}
+                            {/* Last Column: deductions in view mode, Protected (locked checkbox) in edit mode */}
                             <td className="px-4 py-3 text-sm text-center align-middle dark:text-white">
                               {isEditing ? (
                                 /* EDIT MODE: Show locked checkbox (Protected) */
@@ -1355,9 +1387,10 @@ export default function DTRModal({ isOpen, onClose, employee }: DTRModalProps) {
                                   </div>
                                 </div>
                               ) : (
-                                /* VIEW MODE: Show tardiness */
-                                <div className="flex justify-center items-center h-full dark:text-white">
-                                  {formatTardiness(record.tardiness)}
+                                /* VIEW MODE: Show tardiness and undertime */
+                                <div className="flex flex-col justify-center items-center gap-1 h-full text-xs dark:text-white">
+                                  <span>T: {formatTardiness(record.tardiness)}</span>
+                                  <span>U: {formatTimeLoss(record.undertime)}</span>
                                 </div>
                               )}
                             </td>
@@ -1630,16 +1663,7 @@ export default function DTRModal({ isOpen, onClose, employee }: DTRModalProps) {
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Button
-                    onClick={() => {
-                      if (previewData.excelUrl) {
-                        const link = document.createElement('a');
-                        link.href = previewData.excelUrl;
-                        link.download = `DTR_${previewData.employee.name.replace(/\s+/g, '_')}_${previewData.first_period.month}_${previewData.first_period.year}.xlsx`;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      }
-                    }}
+                    onClick={handleExcelDownload}
                     className="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 flex items-center gap-2 text-white"
                     size="lg"
                   >

@@ -2,6 +2,7 @@ import { ReactNode, useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Clock, Users, UserCheck, Award, Shield, Monitor, LogOut, Settings, Menu, X, Loader2, Database, Download, Palette } from "lucide-react";
 import { useAuth } from '@/contexts/AuthContext';
+import { API_URL } from '@/lib/apiBase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -69,8 +70,6 @@ export default function Layout({ children }: LayoutProps) {
   });
   const { logout, admin, isAuthenticated, canManageAdmins } = useAuth();
   const location = useLocation();
-
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   // Define navItems AFTER canManageAdmins is available
   const navItems = [

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { API_URL } from '@/lib/apiBase';
 
 interface Admin {
   id: number;
@@ -80,8 +81,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Regular login - call API for non-guest users
       console.log('🔐 Regular login - calling API');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      
       const response = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -111,7 +110,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setAdmin(null);
     localStorage.removeItem('admin');
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     fetch(`${API_URL}/api/auth/logout`, { method: 'POST' }).catch(console.error);
   };
 
